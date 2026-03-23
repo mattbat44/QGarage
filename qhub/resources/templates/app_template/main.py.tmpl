@@ -1,0 +1,22 @@
+from qhub.core.base_app import BaseApp, InputType
+
+
+class {{class_name}}(BaseApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        # Declare your inputs here:
+        self.add_input("input_layer", "Input Layer", InputType.VECTOR_LAYER)
+        self.add_input("output_path", "Output File", InputType.FILE_PATH,
+                       file_filter="GeoPackage (*.gpkg);;Shapefile (*.shp)")
+
+    def execute_logic(self, inputs):
+        layer = inputs["input_layer"]
+        output_path = inputs["output_path"]
+
+        # TODO: Implement your logic here
+        feature_count = layer.featureCount() if layer else 0
+
+        return {
+            "status": "success",
+            "message": f"Processed {feature_count} features. Output: {output_path}",
+        }

@@ -1,0 +1,13 @@
+{
+    "name": "Hello World",
+    "id": "hello_world",
+    "version": "1.0.0",
+    "author": "QHub",
+    "description": "A simple test app that demonstrates the QHub framework.",
+    "entry_point": "main.py",
+    "class_name": "HelloWorldApp",
+    "tags": [
+        "demo",
+        "test"
+    ]
+}

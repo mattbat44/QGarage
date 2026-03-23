@@ -1,0 +1,18 @@
+[general]
+name=QHub
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.00
+description=Modular app-hosting framework for QGIS. Install, manage, and run isolated mini-tools from a single dashboard.
+version=0.1.0
+author=Matt Adams
+email=noreply@example.com
+about=QHub is a plugin-within-a-plugin framework. Each "App" runs in its own isolated uv virtual environment with fault tolerance, a modern card-based UI, and zero-friction developer experience.
+tracker=https://github.com/example/qhub/issues
+repository=https://github.com/example/qhub
+tags=tools,framework,dashboard,modular
+homepage=https://github.com/example/qhub
+category=Plugins
+icon=icon.svg
+experimental=True
+deprecated=False
+hasProcessingProvider=no
