@@ -308,6 +308,30 @@ def on_finalize(self, result):
         self.add_output_layer(f["path"], f["name"])  # auto-detect type
 ```
 
+## Parameter Caching & Run History
+
+Every app automatically gets **parameter caching** and **run history** — no code changes required.
+
+### How It Works
+
+- **Last-used parameters** are saved to `QgsSettings` each time the user clicks **Run**. When the app UI is rebuilt (e.g. navigating back to it), the last-used values are automatically restored.
+- **Run history** keeps up to 20 recent parameter sets. A **History** dropdown appears at the top of every app below the description. Selecting an entry restores all parameters to those values.
+- Layer inputs are matched best-effort by layer ID → name → source, so they restore correctly as long as the same layers are loaded in the project.
+- CRS values store the `authid()` string (e.g. `EPSG:4326`).
+- File/folder paths, strings, numbers, booleans, choices, and text areas are stored directly.
+
+### Clearing Cache
+
+```python
+from qhub.core.settings import ParameterCache
+ParameterCache("my_app_id").clear()
+```
+
+### Notes
+
+- State between runs is **not shared via `self`** — each `execute_logic()` invocation runs in a fresh subprocess. The cache operates at the UI level only.
+- Apps do not need to opt in or change any code — caching is handled by the framework.
+
 ## Critical Do's and Don'ts
 
 ### DO

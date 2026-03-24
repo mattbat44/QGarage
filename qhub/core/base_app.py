@@ -11,16 +11,20 @@ from qgis.PyQt.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QProgressBar,
     QPushButton,
     QSpinBox,
     QTextEdit,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 from qgis.PyQt.QtCore import QObject, pyqtSignal
+from qgis.PyQt.QtGui import QIcon
 from qgis.gui import (
     QgsFieldComboBox,
     QgsFileWidget,
@@ -28,13 +32,14 @@ from qgis.gui import (
     QgsProjectionSelectionWidget,
 )
 from qgis.core import (
+    QgsCoordinateReferenceSystem,
     QgsMapLayerProxyModel,
     QgsProject,
     QgsRasterLayer,
     QgsVectorLayer,
 )
 
-from .settings import get_uv_executable
+from .settings import get_uv_executable, ParameterCache
 from .subprocess_runner import ProcessMonitor, RUNNER_SCRIPT, serialize_inputs
 from .uv_bridge import UvBridge
 
@@ -122,6 +127,9 @@ class BaseApp(ABC):
         self._monitor: Optional[ProcessMonitor] = None
         self._tmp_dir: Optional[Any] = None  # tempfile.TemporaryDirectory
         self._layer_bridge: Optional[_LayerBridge] = None
+        self._param_cache = ParameterCache(self.app_id)
+        self._history_btn: Optional[QToolButton] = None
+        self._history_menu: Optional[QMenu] = None
 
     # --- Declarative API ---
 
@@ -213,11 +221,27 @@ class BaseApp(ABC):
         self._progress_bar.setVisible(False)
         main_layout.addWidget(self._progress_bar)
 
-        # Run button
+        # Run button row with history recall
+        run_row = QHBoxLayout()
         self._run_button = QPushButton("Run")
         self._run_button.setObjectName("appRunButton")
         self._run_button.clicked.connect(self._on_run_clicked)
-        main_layout.addWidget(self._run_button)
+        run_row.addWidget(self._run_button)
+
+        self._history_menu = QMenu(self._widget)
+        self._history_btn = QToolButton()
+        self._history_btn.setIcon(
+            QIcon.fromTheme("clock", QIcon(":/images/themes/default/mIconHistory.svg"))
+        )
+        self._history_btn.setToolTip("Recall parameters from a previous run")
+        self._history_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self._history_btn.setMenu(self._history_menu)
+        self._history_btn.setObjectName("appHistoryButton")
+        self._history_btn.setFixedSize(28, 28)
+        self._populate_history_menu()
+        run_row.addWidget(self._history_btn)
+
+        main_layout.addLayout(run_row)
 
         # Output area
         self._output_area = QTextEdit()
@@ -231,6 +255,9 @@ class BaseApp(ABC):
         # Wire layer signal so add_output_layer() works from any context
         self._layer_bridge = _LayerBridge(self._widget)
         self._layer_bridge.layer_requested.connect(self._add_layer_to_project)
+
+        # Restore last-used parameters
+        self._restore_params(self._param_cache.load_last())
 
         return self._widget
 
@@ -354,6 +381,160 @@ class BaseApp(ABC):
 
         return values
 
+    # --- Parameter caching helpers ---
+
+    def _serialize_for_cache(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Convert collected inputs to a JSON-serialisable dict for caching."""
+        out: dict[str, Any] = {}
+        for spec in self._input_specs:
+            val = inputs.get(spec.key)
+            if val is None:
+                out[spec.key] = None
+                continue
+            if spec.input_type in (
+                InputType.STRING,
+                InputType.INTEGER,
+                InputType.FLOAT,
+                InputType.BOOLEAN,
+                InputType.CHOICE,
+                InputType.TEXT_AREA,
+                InputType.FIELD,
+            ):
+                out[spec.key] = val
+            elif spec.input_type in (InputType.FILE_PATH, InputType.FOLDER_PATH):
+                out[spec.key] = str(val) if val else ""
+            elif spec.input_type in (
+                InputType.VECTOR_LAYER,
+                InputType.RASTER_LAYER,
+                InputType.ANY_LAYER,
+            ):
+                # Store layer id + name + source for best-effort matching
+                out[spec.key] = {
+                    "id": val.id() if hasattr(val, "id") else "",
+                    "name": val.name() if hasattr(val, "name") else "",
+                    "source": val.source() if hasattr(val, "source") else "",
+                }
+            elif spec.input_type == InputType.CRS:
+                out[spec.key] = val.authid() if hasattr(val, "authid") else str(val)
+            else:
+                out[spec.key] = str(val)
+        return out
+
+    def _restore_params(self, params: dict | None) -> None:
+        """Apply a cached parameter dict back to the current widgets."""
+        if not params:
+            return
+        for spec in self._input_specs:
+            val = params.get(spec.key)
+            if val is None:
+                continue
+            w = self._input_widgets.get(spec.key)
+            if w is None:
+                continue
+            try:
+                self._apply_cached_value(spec, w, val)
+            except Exception:
+                logger.debug(
+                    "Could not restore cached value for '%s'", spec.key, exc_info=True
+                )
+
+    def _apply_cached_value(self, spec: InputSpec, w: QWidget, val: Any) -> None:
+        """Set a single widget's value from a cached representation."""
+        if spec.input_type == InputType.STRING:
+            w.setText(str(val))
+        elif spec.input_type == InputType.INTEGER:
+            w.setValue(int(val))
+        elif spec.input_type == InputType.FLOAT:
+            w.setValue(float(val))
+        elif spec.input_type == InputType.BOOLEAN:
+            w.setChecked(bool(val))
+        elif spec.input_type == InputType.CHOICE:
+            idx = w.findText(str(val))
+            if idx >= 0:
+                w.setCurrentIndex(idx)
+        elif spec.input_type in (InputType.FILE_PATH, InputType.FOLDER_PATH):
+            w.setFilePath(str(val))
+        elif spec.input_type in (
+            InputType.VECTOR_LAYER,
+            InputType.RASTER_LAYER,
+            InputType.ANY_LAYER,
+        ):
+            self._try_restore_layer(w, val)
+        elif spec.input_type == InputType.FIELD:
+            w.setField(str(val))
+        elif spec.input_type == InputType.CRS:
+            crs = QgsCoordinateReferenceSystem(str(val))
+            if crs.isValid():
+                w.setCrs(crs)
+        elif spec.input_type == InputType.TEXT_AREA:
+            w.setText(str(val))
+
+    @staticmethod
+    def _try_restore_layer(combo: QgsMapLayerComboBox, info: Any) -> None:
+        """Best-effort: match a project layer by id, then name, then source."""
+        if isinstance(info, str):
+            info = {"name": info}
+        if not isinstance(info, dict):
+            return
+        project = QgsProject.instance()
+        # Try by layer id first
+        layer_id = info.get("id", "")
+        if layer_id:
+            lyr = project.mapLayer(layer_id)
+            if lyr:
+                combo.setLayer(lyr)
+                return
+        # Fall back to name match
+        name = info.get("name", "")
+        if name:
+            matches = project.mapLayersByName(name)
+            if matches:
+                combo.setLayer(matches[0])
+                return
+        # Fall back to source match
+        source = info.get("source", "")
+        if source:
+            for lyr in project.mapLayers().values():
+                if lyr.source() == source:
+                    combo.setLayer(lyr)
+                    return
+
+    def _populate_history_menu(self) -> None:
+        """Refresh the history popup menu from the cache."""
+        if self._history_menu is None:
+            return
+        self._history_menu.clear()
+        history = self._param_cache.load_history()
+        if not history:
+            action = self._history_menu.addAction("No previous runs")
+            action.setEnabled(False)
+            return
+        for entry in reversed(history):  # most recent first
+            ts = entry.get("timestamp", "?")
+            try:
+                from datetime import datetime, timezone
+
+                dt = datetime.fromisoformat(ts)
+                label = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            except Exception:
+                label = ts
+            p = entry.get("params", {})
+            summary_parts = []
+            for spec in self._input_specs[:3]:
+                v = p.get(spec.key)
+                if v is not None:
+                    if isinstance(v, dict):
+                        v = v.get("name", str(v))
+                    text = str(v)
+                    if len(text) > 20:
+                        text = text[:20] + "\u2026"
+                    summary_parts.append(f"{spec.label}={text}")
+            summary = ", ".join(summary_parts)
+            display = f"{label}  \u2014  {summary}" if summary else label
+            params = entry.get("params")
+            action = self._history_menu.addAction(display)
+            action.triggered.connect(lambda checked, p=params: self._restore_params(p))
+
     def _on_run_clicked(self) -> None:
         """Collect inputs, validate, then dispatch execute_logic via uv run --isolated."""
         inputs = self._collect_inputs()
@@ -369,6 +550,12 @@ class BaseApp(ABC):
         if error:
             self._output_area.setText(f"Validation error: {error}")
             return
+
+        # Cache parameters before launch
+        cacheable = self._serialize_for_cache(inputs)
+        self._param_cache.save_last(cacheable)
+        self._param_cache.push_history(cacheable)
+        self._populate_history_menu()
 
         self._output_area.clear()
         self._run_button.setEnabled(False)
