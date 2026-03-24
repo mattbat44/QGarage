@@ -111,7 +111,6 @@ class AppCardWidget(QFrame):
     def _update_state_badge(self):
         state = self._health.state
         badge_map = {
-            AppState.READY: ("Ready", "background-color: #4CAF50;"),
             AppState.RUNNING: ("Running", "background-color: #2196F3;"),
             AppState.ERROR: ("Error", "background-color: #FF9800;"),
             AppState.CRASHED: ("Crashed", "background-color: #F44336;"),
