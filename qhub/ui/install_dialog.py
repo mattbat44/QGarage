@@ -14,7 +14,6 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..core.uv_bridge import UvBridge
 from ..workers.download_worker import DownloadAndInstallWorker, LocalInstallWorker
 
 logger = logging.getLogger("qhub.install_dialog")
@@ -29,10 +28,9 @@ class InstallDialog(QDialog):
 
     app_installed = pyqtSignal(str)
 
-    def __init__(self, apps_dir: Path, uv_bridge: UvBridge, parent=None):
+    def __init__(self, apps_dir: Path, parent=None):
         super().__init__(parent)
         self._apps_dir = apps_dir
-        self._uv_bridge = uv_bridge
         self._worker: Optional[DownloadAndInstallWorker | LocalInstallWorker] = None
 
         self.setWindowTitle("Install App")
@@ -110,7 +108,6 @@ class InstallDialog(QDialog):
         self._worker = DownloadAndInstallWorker(
             url=url,
             apps_dir=self._apps_dir,
-            uv_bridge=self._uv_bridge,
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)
@@ -124,7 +121,6 @@ class InstallDialog(QDialog):
         self._worker = LocalInstallWorker(
             source_dir=self._selected_folder,
             apps_dir=self._apps_dir,
-            uv_bridge=self._uv_bridge,
         )
         self._worker.progress.connect(self._on_progress)
         self._worker.finished.connect(self._on_finished)

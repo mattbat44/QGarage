@@ -1,5 +1,4 @@
 import json
-import logging
 import os
 from pathlib import Path
 from typing import Optional
@@ -10,13 +9,12 @@ from qgis.PyQt.QtWidgets import QAction
 from qgis.gui import QgisInterface
 
 from .core.app_registry import AppEntry, AppRegistry
+from .core.logger import log_error
 from .core.settings import get_uv_executable
 from .core.uv_bridge import UvBridge
 from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
-
-logger = logging.getLogger("qhub")
 
 PLUGIN_DIR = os.path.dirname(__file__)
 APPS_DIR = Path(PLUGIN_DIR) / "apps"
@@ -49,7 +47,7 @@ class QHubPlugin:
         try:
             self.uv_bridge = UvBridge(get_uv_executable())
         except RuntimeError as e:
-            logger.error(f"uv not available: {e}")
+            log_error(f"uv not available: {e}")
             self.uv_bridge = None
 
         if self.uv_bridge is not None:
@@ -91,10 +89,7 @@ class QHubPlugin:
             self.dock.setVisible(checked)
 
     def _on_install_requested(self):
-        if self.uv_bridge is None:
-            logger.error("Cannot install: uv is not available")
-            return
-        dialog = InstallDialog(APPS_DIR, self.uv_bridge, self.iface.mainWindow())
+        dialog = InstallDialog(APPS_DIR, self.iface.mainWindow())
         dialog.app_installed.connect(self._on_app_installed)
         dialog.exec()
 
@@ -102,6 +97,12 @@ class QHubPlugin:
         """Called when an app is successfully installed via the dialog."""
         if self.registry is None or self.dock is None:
             return
+
+        # If the app already exists, unload it and remove its card first
+        if app_id in self.registry.entries:
+            self.registry.remove_app(app_id)
+            self.dock.remove_card(app_id)
+
         # Read app_meta and register
         meta_file = APPS_DIR / app_id / "app_meta.json"
         if not meta_file.exists():

@@ -1,6 +1,7 @@
-from enum import Enum, auto
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum, auto
 from typing import Optional
 
 
@@ -18,6 +19,7 @@ class AppState(Enum):
 
 
 MAX_CONSECUTIVE_ERRORS = 3
+MAX_ERROR_LOG_SIZE = 50
 
 
 @dataclass
@@ -28,7 +30,7 @@ class AppHealth:
     consecutive_errors: int = 0
     last_error: Optional[str] = None
     last_error_time: Optional[datetime] = None
-    error_log: list[str] = field(default_factory=list)
+    error_log: deque = field(default_factory=lambda: deque(maxlen=MAX_ERROR_LOG_SIZE))
 
     def record_success(self) -> None:
         self.state = AppState.READY
@@ -38,9 +40,9 @@ class AppHealth:
         self.consecutive_errors += 1
         self.last_error = error_msg
         self.last_error_time = datetime.now()
+        # deque with maxlen automatically handles overflow
         self.error_log.append(f"[{self.last_error_time.isoformat()}] {error_msg}")
-        if len(self.error_log) > 50:
-            self.error_log = self.error_log[-50:]
+
         if self.consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
             self.state = AppState.CRASHED
         else:

@@ -13,6 +13,14 @@ class {{class_name}}(BaseApp):
         layer = inputs["input_layer"]
         output_path = inputs["output_path"]
 
+        # Optional: launch external logic in isolated uv env + separate console.
+        # Example:
+        # pid = self.run_uv_isolated(
+        #     command=["python", "-m", "my_tool", "--out", output_path],
+        #     with_packages=["my-tool-package"],
+        # )
+        # return {"status": "success", "message": f"Started external tool (pid={pid})"}
+
         # TODO: Implement your logic here
         feature_count = layer.featureCount() if layer else 0
 

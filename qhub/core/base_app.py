@@ -29,6 +29,10 @@ from qgis.gui import (
 )
 from qgis.core import QgsMapLayerProxyModel, QgsProject
 
+from .settings import get_uv_executable
+from .subprocess_runner import ProcessMonitor, RUNNER_SCRIPT, serialize_inputs
+from .uv_bridge import UvBridge
+
 logger = logging.getLogger("qhub.base_app")
 
 
@@ -99,6 +103,9 @@ class BaseApp(ABC):
         self._output_area: Optional[QTextEdit] = None
         self._progress_bar: Optional[QProgressBar] = None
         self._run_button: Optional[QPushButton] = None
+        self._uv_bridge: Optional[UvBridge] = None
+        self._monitor: Optional[ProcessMonitor] = None
+        self._tmp_dir: Optional[Any] = None  # tempfile.TemporaryDirectory
 
     # --- Declarative API ---
 
@@ -327,7 +334,7 @@ class BaseApp(ABC):
         return values
 
     def _on_run_clicked(self) -> None:
-        """Collect inputs, validate, and call execute_logic()."""
+        """Collect inputs, validate, then dispatch execute_logic via uv run --isolated."""
         inputs = self._collect_inputs()
 
         for spec in self._input_specs:
@@ -342,21 +349,124 @@ class BaseApp(ABC):
             self._output_area.setText(f"Validation error: {error}")
             return
 
+        self._output_area.clear()
         self._run_button.setEnabled(False)
         self._progress_bar.setVisible(True)
-        self._progress_bar.setRange(0, 0)
+        self._progress_bar.setRange(0, 0)  # indeterminate
+        self._output_area.append("Launching in isolated process…")
 
         try:
-            result = self.execute_logic(inputs)
-            status = result.get("status", "unknown")
-            message = result.get("message", str(result))
-            self._output_area.setText(f"[{status.upper()}] {message}")
-        except Exception as e:
-            self._output_area.setText(f"[ERROR] {type(e).__name__}: {e}")
-            logger.exception(f"App '{self.app_id}' execute_logic raised an exception")
-        finally:
+            self._launch_isolated(inputs)
+        except Exception as exc:
+            self._output_area.append(f"[ERROR] Failed to launch: {exc}")
+            logger.exception(
+                "Failed to launch isolated subprocess for '%s'", self.app_id
+            )
             self._run_button.setEnabled(True)
             self._progress_bar.setVisible(False)
+
+    def _launch_isolated(self, inputs: dict) -> None:
+        """Serialise inputs, write runner+config, spawn uv run --isolated."""
+        import tempfile
+
+        # Temp directory lives until monitor thread is done
+        self._tmp_dir = tempfile.TemporaryDirectory(prefix="qhub_run_")
+        tmp = Path(self._tmp_dir.name)
+
+        # Serialise all QGIS objects to JSON-safe equivalents
+        serialised = serialize_inputs(inputs, tmp)
+
+        inputs_path = tmp / "inputs.json"
+        output_path = tmp / "output.json"
+        runner_path = tmp / "runner.py"
+        config_path = tmp / "config.json"
+
+        inputs_path.write_text(
+            __import__("json").dumps(serialised, default=str), encoding="utf-8"
+        )
+        runner_path.write_text(RUNNER_SCRIPT, encoding="utf-8")
+
+        # Resolve app plugin dir so runner can import qhub package
+        import qhub
+
+        plugin_dir = Path(qhub.__file__).parent
+
+        app_meta = dict(self.app_meta)
+        config = {
+            "inputs_path": str(inputs_path),
+            "output_path": str(output_path),
+            "plugin_dir": str(plugin_dir),
+            "app_dir": str(self.app_dir),
+            "module_path": str(
+                self.app_dir / self.app_meta.get("entry_point", "main.py")
+            ),
+            "class_name": self.app_meta.get("class_name", "App"),
+            "app_meta": app_meta,
+        }
+        config_path.write_text(__import__("json").dumps(config), encoding="utf-8")
+
+        requirements_path = self.app_dir / "requirements.txt"
+        venv_sp = self._get_uv_bridge().get_site_packages(self.app_dir)
+        stderr_log = tmp / "stderr.log"
+
+        process = self._get_uv_bridge().launch_app_isolated(
+            runner_path=runner_path,
+            config_path=config_path,
+            requirements_path=requirements_path if requirements_path.exists() else None,
+            venv_site_packages=venv_sp,
+            stderr_log_path=stderr_log,
+        )
+
+        # Start monitor thread – polls for output.json, signals us when done
+        self._monitor = ProcessMonitor(
+            process, output_path, tmp, stderr_log_path=stderr_log, parent=None
+        )
+        self._monitor.completed.connect(self._on_subprocess_complete)
+        self._monitor.error.connect(self._on_subprocess_error)
+        self._monitor.start()
+
+    def _on_subprocess_complete(self, result: dict) -> None:
+        """Called on the Qt main thread when the runner writes its output JSON."""
+        status = result.get("status", "unknown")
+        message = result.get("message", str(result))
+        self._output_area.append(f"[{status.upper()}] {message}")
+
+        traceback_text = result.get("traceback", "")
+        if status == "error" and traceback_text:
+            self._output_area.append(f"\n--- Traceback ---\n{traceback_text}")
+            logger.error("App '%s' traceback:\n%s", self.app_id, traceback_text)
+
+        # Replay any addMapLayer() calls that happened inside the subprocess
+        added = result.get("__added_layers__", [])
+        for layer_info in added:
+            try:
+                from qgis.core import QgsRasterLayer
+
+                lyr = QgsRasterLayer(layer_info["source"], layer_info["name"])
+                if lyr.isValid():
+                    QgsProject.instance().addMapLayer(lyr)
+            except Exception as exc:
+                logger.warning("Could not add layer from subprocess: %s", exc)
+
+        self.on_finalize(result)
+        self._run_button.setEnabled(True)
+        self._progress_bar.setVisible(False)
+        # tmp_dir cleanup happens when TemporaryDirectory is GC'd
+
+    def _on_subprocess_error(self, msg: str) -> None:
+        """Called on the Qt main thread when the monitor detects an error."""
+        self._output_area.append(f"[ERROR] {msg}")
+        logger.error("App '%s' subprocess error: %s", self.app_id, msg)
+        self._run_button.setEnabled(True)
+        self._progress_bar.setVisible(False)
+
+    def on_finalize(self, result: dict) -> None:
+        """Optional hook called on the main thread after subprocess completes.
+
+        Override to perform additional QGIS-side work (e.g. loading a result
+        layer not captured via QgsProject.addMapLayer inside execute_logic).
+        """
+        pass
 
     # --- Utility methods for app developers ---
 
@@ -375,3 +485,47 @@ class BaseApp(ABC):
     def get_project(self) -> QgsProject:
         """Convenience accessor for the current QGIS project."""
         return QgsProject.instance()
+
+    def run_uvx_tool(
+        self,
+        tool: str,
+        args: Optional[list[str]] = None,
+        cwd: Optional[Path] = None,
+        env: Optional[dict[str, str]] = None,
+    ) -> int:
+        """Launch ``uvx`` tool in a separate console window.
+
+        Returns the spawned process PID.
+        """
+        bridge = self._get_uv_bridge()
+        return bridge.launch_uvx_windowed(
+            tool=tool,
+            args=args,
+            cwd=cwd or self.app_dir,
+            env=env,
+        )
+
+    def run_uv_isolated(
+        self,
+        command: list[str],
+        with_packages: Optional[list[str]] = None,
+        cwd: Optional[Path] = None,
+        env: Optional[dict[str, str]] = None,
+    ) -> int:
+        """Launch ``uv run --isolated`` in a separate console window.
+
+        Returns the spawned process PID.
+        """
+        bridge = self._get_uv_bridge()
+        return bridge.launch_uv_run_windowed(
+            command=command,
+            with_packages=with_packages,
+            cwd=cwd or self.app_dir,
+            env=env,
+            isolated=True,
+        )
+
+    def _get_uv_bridge(self) -> UvBridge:
+        if self._uv_bridge is None:
+            self._uv_bridge = UvBridge(get_uv_executable())
+        return self._uv_bridge

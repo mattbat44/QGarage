@@ -37,3 +37,11 @@ $sourceDir = Join-Path $PSScriptRoot "qhub"
 Copy-Item $sourceDir $targetDir -Recurse -Force
 Write-Host "Deployed qhub plugin to $targetDir"
 Write-Host "Restart QGIS or use Plugin Reloader to activate."
+
+#Install uv if not already installed
+if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
+    Write-Host "Installing uv..."
+    # Use powerShell to install uv
+    Invoke-Expression (New-Object System.Net.WebClient).DownloadString('https://uv.io/install.ps1')
+    Write-Host "uv installed successfully."
+}

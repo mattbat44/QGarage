@@ -1,12 +1,21 @@
-import logging
 from pathlib import Path
+from typing import Optional
 
 from qgis.PyQt.QtWidgets import QApplication
 from qgis.PyQt.QtGui import QPalette
 
-logger = logging.getLogger("qhub.theme_manager")
+from ..core.constants import (
+    DARK_THEME_FILE,
+    DARK_THEME_LUMINANCE_THRESHOLD,
+    DEFAULT_ENCODING,
+    LIGHT_THEME_FILE,
+)
+from ..core.logger import log_warning
 
 THEMES_DIR = Path(__file__).parent
+
+# Cache for loaded stylesheets
+_stylesheet_cache: dict[str, str] = {}
 
 
 class ThemeManager:
@@ -24,17 +33,26 @@ class ThemeManager:
         palette = app.palette()
         bg = palette.color(QPalette.ColorRole.Window)
         luminance = 0.299 * bg.red() + 0.587 * bg.green() + 0.114 * bg.blue()
-        return luminance < 128
+        return luminance < DARK_THEME_LUMINANCE_THRESHOLD
 
     @classmethod
     def get_stylesheet(cls) -> str:
-        """Return the appropriate QSS stylesheet content."""
-        theme_file = "dark.qss" if cls.is_dark_theme() else "light.qss"
+        """Return the appropriate QSS stylesheet content (cached)."""
+        theme_file = DARK_THEME_FILE if cls.is_dark_theme() else LIGHT_THEME_FILE
+
+        # Check cache first
+        if theme_file in _stylesheet_cache:
+            return _stylesheet_cache[theme_file]
+
+        # Load and cache
         qss_path = THEMES_DIR / theme_file
         if not qss_path.exists():
-            logger.warning(f"Theme file not found: {qss_path}")
+            log_warning(f"Theme file not found: {qss_path}", "theme")
             return ""
-        return qss_path.read_text(encoding="utf-8")
+
+        content = qss_path.read_text(encoding=DEFAULT_ENCODING)
+        _stylesheet_cache[theme_file] = content
+        return content
 
     @classmethod
     def apply_to_widget(cls, widget) -> None:

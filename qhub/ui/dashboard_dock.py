@@ -139,7 +139,7 @@ class DashboardDock(QgsDockWidget):
         self._empty_label.setVisible(len(entries) == 0)
 
         for app_id, entry in entries.items():
-            card = AppCardWidget(app_id, entry.app_meta, entry.health)
+            card = AppCardWidget(app_id, entry.app_meta, entry.health, app_dir=entry.app_dir)
             card.run_clicked.connect(self._on_app_run)
             card.reset_clicked.connect(self._on_app_reset)
             self._cards[app_id] = card
@@ -149,7 +149,7 @@ class DashboardDock(QgsDockWidget):
     def add_card(self, entry: AppEntry):
         """Add a single card (used after installing a new app)."""
         self._empty_label.setVisible(False)
-        card = AppCardWidget(entry.app_id, entry.app_meta, entry.health)
+        card = AppCardWidget(entry.app_id, entry.app_meta, entry.health, app_dir=entry.app_dir)
         card.run_clicked.connect(self._on_app_run)
         card.reset_clicked.connect(self._on_app_reset)
         self._cards[entry.app_id] = card

@@ -9,13 +9,44 @@ from urllib.request import Request, urlopen
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
-from ..core.uv_bridge import UvBridge
-
 logger = logging.getLogger("qhub.download_worker")
 
 
+def _normalize_icon_path(
+    app_meta: dict, source_app_dir: Path, dest_app_dir: Path
+) -> None:
+    """Copy app icon into installed app directory and normalize icon_path.
+
+    If app_meta contains `icon_path`, this function resolves the source icon
+    path (relative to source_app_dir or absolute), copies it into dest_app_dir,
+    and rewrites app_meta['icon_path'] as a relative file name.
+    """
+    icon_value = (app_meta.get("icon_path") or "").strip()
+    if not icon_value:
+        return
+
+    source_icon = Path(icon_value)
+    if not source_icon.is_absolute():
+        source_icon = source_app_dir / source_icon
+
+    if not source_icon.exists() or not source_icon.is_file():
+        logger.warning(
+            "icon_path not found for app '%s': %s", app_meta.get("id", "?"), source_icon
+        )
+        return
+
+    icon_dest_name = source_icon.name
+    dest_icon_path = dest_app_dir / icon_dest_name
+    if source_icon.resolve() != dest_icon_path.resolve():
+        shutil.copy2(source_icon, dest_icon_path)
+
+    app_meta["icon_path"] = icon_dest_name
+    with open(dest_app_dir / "app_meta.json", "w", encoding="utf-8") as f:
+        json.dump(app_meta, f, ensure_ascii=False, indent=2)
+
+
 class DownloadAndInstallWorker(QThread):
-    """Worker thread: download ZIP -> extract -> uv venv -> uv pip install.
+    """Worker thread: download ZIP -> extract -> copy to apps dir.
 
     Signals:
         progress(int, str): (percentage, status_message)
@@ -25,11 +56,10 @@ class DownloadAndInstallWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(self, url: str, apps_dir: Path, uv_bridge: UvBridge, parent=None):
+    def __init__(self, url: str, apps_dir: Path, parent=None):
         super().__init__(parent)
         self.url = url
         self.apps_dir = apps_dir
-        self.uv_bridge = uv_bridge
         self._cancelled = False
 
     def cancel(self):
@@ -101,16 +131,7 @@ class DownloadAndInstallWorker(QThread):
             if dest_dir.exists():
                 shutil.rmtree(dest_dir)
             shutil.copytree(app_source_dir, dest_dir)
-
-            self.progress.emit(70, "Creating virtual environment...")
-
-            # Phase 5: uv venv (70-85%)
-            self.uv_bridge.create_venv(dest_dir)
-
-            self.progress.emit(85, "Installing dependencies...")
-
-            # Phase 6: pip install (85-98%)
-            self.uv_bridge.install_requirements(dest_dir)
+            _normalize_icon_path(app_meta, app_source_dir, dest_dir)
 
             self.progress.emit(100, "Installation complete!")
             self.finished.emit(True, app_id)
@@ -125,7 +146,7 @@ class DownloadAndInstallWorker(QThread):
 
 
 class LocalInstallWorker(QThread):
-    """Worker thread: copy local folder -> uv venv -> uv pip install.
+    """Worker thread: copy local folder to apps dir.
 
     Signals:
         progress(int, str): (percentage, status_message)
@@ -136,12 +157,11 @@ class LocalInstallWorker(QThread):
     finished = pyqtSignal(bool, str)
 
     def __init__(
-        self, source_dir: Path, apps_dir: Path, uv_bridge: UvBridge, parent=None
+        self, source_dir: Path, apps_dir: Path, parent=None
     ):
         super().__init__(parent)
         self.source_dir = source_dir
         self.apps_dir = apps_dir
-        self.uv_bridge = uv_bridge
 
     def run(self):
         try:
@@ -168,12 +188,7 @@ class LocalInstallWorker(QThread):
             if dest_dir.exists():
                 shutil.rmtree(dest_dir)
             shutil.copytree(self.source_dir, dest_dir)
-
-            self.progress.emit(50, "Creating virtual environment...")
-            self.uv_bridge.create_venv(dest_dir)
-
-            self.progress.emit(75, "Installing dependencies...")
-            self.uv_bridge.install_requirements(dest_dir)
+            _normalize_icon_path(app_meta, self.source_dir, dest_dir)
 
             self.progress.emit(100, "Installation complete!")
             self.finished.emit(True, app_id)

@@ -1,6 +1,8 @@
+from pathlib import Path
 from typing import Optional
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -24,11 +26,12 @@ class AppCardWidget(QFrame):
     run_clicked = pyqtSignal(str)
     reset_clicked = pyqtSignal(str)
 
-    def __init__(self, app_id: str, app_meta: dict, health: AppHealth, parent=None):
+    def __init__(self, app_id: str, app_meta: dict, health: AppHealth, app_dir: Optional[Path] = None, parent=None):
         super().__init__(parent)
         self.app_id = app_id
         self._app_meta = app_meta
         self._health = health
+        self._app_dir = app_dir
 
         self.setProperty("class", "AppCardWidget")
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -44,11 +47,9 @@ class AppCardWidget(QFrame):
         layout.setContentsMargins(12, 10, 12, 10)
         layout.setSpacing(10)
 
-        # Icon placeholder (colored square)
-        icon_frame = QFrame()
-        icon_frame.setFixedSize(40, 40)
-        icon_frame.setStyleSheet("background-color: #4CAF50; border-radius: 8px;")
-        layout.addWidget(icon_frame)
+        # Icon
+        icon_widget = self._build_icon()
+        layout.addWidget(icon_widget)
 
         # Text area
         text_layout = QVBoxLayout()
@@ -124,3 +125,46 @@ class AppCardWidget(QFrame):
 
         self._reset_button.setVisible(state == AppState.CRASHED)
         self._run_button.setEnabled(state in (AppState.READY, AppState.ERROR))
+
+    def _build_icon(self) -> QLabel:
+        """Build the icon widget from app_meta icon_path, or a coloured fallback."""
+        icon_path_value = (self._app_meta.get("icon_path") or "").strip()
+        if icon_path_value and self._app_dir is not None:
+            resolved = self._app_dir / icon_path_value
+            if resolved.is_file():
+                pixmap = QPixmap(str(resolved))
+                if not pixmap.isNull():
+                    label = QLabel()
+                    label.setFixedSize(40, 40)
+                    label.setPixmap(
+                        pixmap.scaled(
+                            40, 40,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    )
+                    label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                    return label
+
+        # Fallback: coloured square
+        fallback = QLabel()
+        fallback.setFixedSize(40, 40)
+        fallback.setStyleSheet("background-color: #4CAF50; border-radius: 8px;")
+        return fallback
+
+    def mouseReleaseEvent(self, event):
+        """Open app when the card background is clicked.
+
+        Keeps button clicks working normally by ignoring clicks that originate
+        from a QPushButton child.
+        """
+        if event.button() == Qt.MouseButton.LeftButton:
+            click_pos = (
+                event.pos() if hasattr(event, "pos") else event.position().toPoint()
+            )
+            child = self.childAt(click_pos)
+            if not isinstance(child, QPushButton) and self._run_button.isEnabled():
+                self.run_clicked.emit(self.app_id)
+                event.accept()
+                return
+        super().mouseReleaseEvent(event)

@@ -1,16 +1,16 @@
 import json
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional
+from types import MappingProxyType
 
 from .app_loader import AppLoader
 from .app_state import AppHealth
+from .constants import APP_META_FILENAME, DEFAULT_ENCODING
+from .logger import log_error, log_info, log_warning
 from .uv_bridge import UvBridge
 
 if TYPE_CHECKING:
     from .base_app import BaseApp
-
-logger = logging.getLogger("qhub.app_registry")
 
 
 class AppEntry:
@@ -41,8 +41,9 @@ class AppRegistry:
         self._entries: dict[str, AppEntry] = {}
 
     @property
-    def entries(self) -> dict[str, AppEntry]:
-        return dict(self._entries)
+    def entries(self) -> MappingProxyType[str, AppEntry]:
+        """Return read-only view of entries (no copy)."""
+        return MappingProxyType(self._entries)
 
     def discover(self) -> list[AppEntry]:
         """Scan apps_dir for subdirectories containing app_meta.json."""
@@ -51,39 +52,63 @@ class AppRegistry:
             self.apps_dir.mkdir(parents=True, exist_ok=True)
             return discovered
 
-        for child in sorted(self.apps_dir.iterdir()):
-            meta_file = child / "app_meta.json"
-            if not child.is_dir() or not meta_file.exists():
+        # No need to sort - discovery order doesn't matter
+        for child in self.apps_dir.iterdir():
+            if not child.is_dir():
                 continue
+
+            meta_file = child / APP_META_FILENAME
+            if not meta_file.exists():
+                continue
+
             try:
-                with open(meta_file, encoding="utf-8") as f:
+                with open(meta_file, encoding=DEFAULT_ENCODING) as f:
                     app_meta = json.load(f)
+
                 app_id = app_meta.get("id")
                 if not app_id:
-                    logger.warning(f"Skipping {child}: app_meta.json missing 'id'")
+                    log_warning(
+                        f"Skipping {child}: {APP_META_FILENAME} missing 'id'",
+                        "app_registry",
+                    )
                     continue
+
                 if app_id not in self._entries:
                     entry = AppEntry(child, app_meta)
                     self._entries[app_id] = entry
                     discovered.append(entry)
-                    logger.info(f"Discovered app: {app_id}")
-            except Exception as e:
-                logger.error(f"Error reading {meta_file}: {e}")
+                    log_info(f"Discovered app: {app_id}", "app_registry")
+
+            except json.JSONDecodeError as e:
+                log_error(
+                    f"Invalid JSON in {meta_file}: {e}",
+                    "app_registry",
+                )
+            except (OSError, IOError) as e:
+                log_error(
+                    f"Error reading {meta_file}: {e}",
+                    "app_registry",
+                )
 
         return discovered
 
     def load_all(self) -> None:
-        """Load all discovered apps."""
+        """Load all discovered apps (DEPRECATED - use lazy loading)."""
         for entry in self._entries.values():
             if entry.instance is None:
                 self._load_entry(entry)
 
     def load_app(self, app_id: str) -> Optional["BaseApp"]:
-        """Load a specific app by ID."""
+        """Load a specific app by ID (lazy)."""
         entry = self._entries.get(app_id)
         if entry is None:
-            logger.warning(f"App '{app_id}' not found in registry")
+            log_warning(f"App '{app_id}' not found in registry", "app_registry")
             return None
+
+        # If already loaded, return cached instance
+        if entry.instance is not None:
+            return entry.instance
+
         return self._load_entry(entry)
 
     def _load_entry(self, entry: AppEntry) -> Optional["BaseApp"]:
@@ -92,8 +117,8 @@ class AppRegistry:
         if instance is not None:
             try:
                 instance.on_load()
-            except Exception:
-                logger.exception(f"on_load() failed for {entry.app_id}")
+            except Exception as e:
+                log_error(f"on_load() failed for {entry.app_id}: {e}", "app_registry")
         return instance
 
     def unload_app(self, app_id: str) -> None:
@@ -104,8 +129,8 @@ class AppRegistry:
         if entry.instance is not None:
             try:
                 entry.instance.on_unload()
-            except Exception:
-                logger.exception(f"on_unload() failed for {app_id}")
+            except Exception as e:
+                log_error(f"on_unload() failed for {app_id}: {e}", "app_registry")
             entry.instance = None
         self.loader.unload_app(app_id)
 
