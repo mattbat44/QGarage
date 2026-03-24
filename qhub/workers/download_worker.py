@@ -156,9 +156,7 @@ class LocalInstallWorker(QThread):
     progress = pyqtSignal(int, str)
     finished = pyqtSignal(bool, str)
 
-    def __init__(
-        self, source_dir: Path, apps_dir: Path, parent=None
-    ):
+    def __init__(self, source_dir: Path, apps_dir: Path, parent=None):
         super().__init__(parent)
         self.source_dir = source_dir
         self.apps_dir = apps_dir

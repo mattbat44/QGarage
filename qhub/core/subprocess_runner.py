@@ -415,7 +415,9 @@ class ProcessMonitor(QThread):
             return ""
         try:
             if self._stderr_log.exists():
-                content = self._stderr_log.read_text(encoding="utf-8", errors="replace").strip()
+                content = self._stderr_log.read_text(
+                    encoding="utf-8", errors="replace"
+                ).strip()
                 return content
         except Exception:
             pass

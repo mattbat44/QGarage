@@ -26,7 +26,14 @@ class AppCardWidget(QFrame):
     run_clicked = pyqtSignal(str)
     reset_clicked = pyqtSignal(str)
 
-    def __init__(self, app_id: str, app_meta: dict, health: AppHealth, app_dir: Optional[Path] = None, parent=None):
+    def __init__(
+        self,
+        app_id: str,
+        app_meta: dict,
+        health: AppHealth,
+        app_dir: Optional[Path] = None,
+        parent=None,
+    ):
         super().__init__(parent)
         self.app_id = app_id
         self._app_meta = app_meta
@@ -138,7 +145,8 @@ class AppCardWidget(QFrame):
                     label.setFixedSize(40, 40)
                     label.setPixmap(
                         pixmap.scaled(
-                            40, 40,
+                            40,
+                            40,
                             Qt.AspectRatioMode.KeepAspectRatio,
                             Qt.TransformationMode.SmoothTransformation,
                         )
