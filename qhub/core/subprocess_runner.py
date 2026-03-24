@@ -102,6 +102,44 @@ from unittest.mock import MagicMock
 # We need this available at module scope so the outer try/except can always
 # write a result file, even if the error happens during config loading.
 _output_path = None
+_stderr_log_file = None
+
+
+def _safe_print(*args, **kwargs):
+    """print() that silently swallows OSError when stdout is broken."""
+    try:
+        print(*args, **kwargs)
+    except OSError:
+        pass
+
+
+class _StderrTee:
+    """Duplicates writes to the original stderr AND a log file."""
+    def __init__(self, original, log_path):
+        self._orig = original
+        self._file = open(log_path, "w", encoding="utf-8")
+
+    def write(self, s):
+        try:
+            self._orig.write(s)
+        except OSError:
+            pass
+        self._file.write(s)
+        self._file.flush()
+
+    def flush(self):
+        try:
+            self._orig.flush()
+        except OSError:
+            pass
+        self._file.flush()
+
+    def close_log(self):
+        try:
+            self._file.close()
+        except Exception:
+            pass
+
 
 try:
 
@@ -254,6 +292,13 @@ try:
     class_name   = cfg["class_name"]
     app_meta     = cfg["app_meta"]
 
+    # ── Redirect stderr to a tee (console + log file) ─────────────────────
+    _stderr_log_path = cfg.get("stderr_log_path")
+    if _stderr_log_path:
+        _stderr_tee = _StderrTee(sys.stderr, _stderr_log_path)
+        sys.stderr = _stderr_tee
+        _stderr_log_file = _stderr_tee
+
     with open(inputs_path) as _f:
         inputs = _deserialize(json.load(_f))
 
@@ -275,13 +320,13 @@ try:
     AppClass = getattr(_mod, class_name)
     app = AppClass(app_meta=app_meta, app_dir=app_dir)
 
-    # Redirect app.log() to print() so output appears live in this console window
-    app.log          = lambda msg: print(msg, flush=True)
-    app.set_progress = lambda v, m=100: print(f"[PROGRESS] {v}/{m}", flush=True)
+    # Redirect app.log() to _safe_print so output appears live in the console
+    app.log          = lambda msg: _safe_print(msg, flush=True)
+    app.set_progress = lambda v, m=100: _safe_print(f"[PROGRESS] {v}/{m}", flush=True)
 
     # ── Execute ───────────────────────────────────────────────────────────────
 
-    print(f"[QHub] Running {app_meta.get('name', class_name)} ...\n", flush=True)
+    _safe_print(f"[QHub] Running {app_meta.get('name', class_name)} ...\n", flush=True)
     try:
         result = app.execute_logic(inputs)
         if not isinstance(result, dict):
@@ -292,7 +337,7 @@ try:
             "message": f"{type(_e).__name__}: {_e}",
             "traceback": _tb_mod.format_exc(),
         }
-        print(result["traceback"], flush=True)
+        _safe_print(result["traceback"], flush=True)
 
     result["__added_layers__"] = _ADDED_LAYERS
 
@@ -301,12 +346,24 @@ try:
         json.dump(result, _f)
 
     status = result.get("status", "unknown").upper()
-    print(f"\n[QHub] [{status}] {result.get('message', '')}", flush=True)
+    _safe_print(f"\n[QHub] [{status}] {result.get('message', '')}", flush=True)
 
 except Exception as _fatal:
     # ── Catch-all: any error during setup, import, or config loading ──────
     _tb_text = _tb_mod.format_exc()
-    print(f"\n[QHub] FATAL ERROR during runner initialisation:\n{_tb_text}", flush=True)
+    _safe_print(f"\n[QHub] FATAL ERROR during runner initialisation:\n{_tb_text}", flush=True)
+
+    # Also write to stderr log if available
+    try:
+        if _stderr_log_file is None:
+            # stderr tee wasn't set up yet — try writing directly
+            _cfg_path = Path(sys.argv[1])
+            with open(_cfg_path) as _ff:
+                _slp = json.load(_ff).get("stderr_log_path")
+            if _slp:
+                Path(_slp).write_text(_tb_text, encoding="utf-8")
+    except Exception:
+        pass
 
     _crash_result = {
         "status": "error",
@@ -333,10 +390,17 @@ except Exception as _fatal:
         except Exception:
             pass  # file system is broken — nothing more we can do
 
+# Close stderr log if we tee'd it
+if _stderr_log_file is not None:
+    try:
+        _stderr_log_file.close_log()
+    except Exception:
+        pass
+
 # Keep window open so the user can read logs
 try:
     input("\n--- Press Enter to close this window ---")
-except (EOFError, KeyboardInterrupt):
+except (EOFError, KeyboardInterrupt, OSError):
     pass
 '''
 

@@ -20,14 +20,19 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import QObject, pyqtSignal
 from qgis.gui import (
     QgsFieldComboBox,
     QgsFileWidget,
     QgsMapLayerComboBox,
     QgsProjectionSelectionWidget,
 )
-from qgis.core import QgsMapLayerProxyModel, QgsProject
+from qgis.core import (
+    QgsMapLayerProxyModel,
+    QgsProject,
+    QgsRasterLayer,
+    QgsVectorLayer,
+)
 
 from .settings import get_uv_executable
 from .subprocess_runner import ProcessMonitor, RUNNER_SCRIPT, serialize_inputs
@@ -72,6 +77,16 @@ class InputSpec:
     group: str = ""
 
 
+class _LayerBridge(QObject):
+    """Internal QObject that carries layer-add requests as Qt signals.
+
+    This lets apps deliver output layers to the QGIS map canvas directly
+    on the main thread — no subprocess round-trip needed.
+    """
+
+    layer_requested = pyqtSignal(dict)
+
+
 class BaseApp(ABC):
     """Abstract base class for all QHub apps.
 
@@ -106,6 +121,7 @@ class BaseApp(ABC):
         self._uv_bridge: Optional[UvBridge] = None
         self._monitor: Optional[ProcessMonitor] = None
         self._tmp_dir: Optional[Any] = None  # tempfile.TemporaryDirectory
+        self._layer_bridge: Optional[_LayerBridge] = None
 
     # --- Declarative API ---
 
@@ -211,6 +227,11 @@ class BaseApp(ABC):
         main_layout.addWidget(self._output_area)
 
         main_layout.addStretch()
+
+        # Wire layer signal so add_output_layer() works from any context
+        self._layer_bridge = _LayerBridge(self._widget)
+        self._layer_bridge.layer_requested.connect(self._add_layer_to_project)
+
         return self._widget
 
     def _create_widget_for_spec(self, spec: InputSpec) -> QWidget:
@@ -391,6 +412,10 @@ class BaseApp(ABC):
 
         plugin_dir = Path(qhub.__file__).parent
 
+        requirements_path = self.app_dir / "requirements.txt"
+        venv_sp = self._get_uv_bridge().get_site_packages(self.app_dir)
+        stderr_log = tmp / "stderr.log"
+
         app_meta = dict(self.app_meta)
         config = {
             "inputs_path": str(inputs_path),
@@ -402,19 +427,15 @@ class BaseApp(ABC):
             ),
             "class_name": self.app_meta.get("class_name", "App"),
             "app_meta": app_meta,
+            "stderr_log_path": str(stderr_log),
         }
         config_path.write_text(__import__("json").dumps(config), encoding="utf-8")
-
-        requirements_path = self.app_dir / "requirements.txt"
-        venv_sp = self._get_uv_bridge().get_site_packages(self.app_dir)
-        stderr_log = tmp / "stderr.log"
 
         process = self._get_uv_bridge().launch_app_isolated(
             runner_path=runner_path,
             config_path=config_path,
             requirements_path=requirements_path if requirements_path.exists() else None,
             venv_site_packages=venv_sp,
-            stderr_log_path=stderr_log,
         )
 
         # Start monitor thread – polls for output.json, signals us when done
@@ -439,14 +460,7 @@ class BaseApp(ABC):
         # Replay any addMapLayer() calls that happened inside the subprocess
         added = result.get("__added_layers__", [])
         for layer_info in added:
-            try:
-                from qgis.core import QgsRasterLayer
-
-                lyr = QgsRasterLayer(layer_info["source"], layer_info["name"])
-                if lyr.isValid():
-                    QgsProject.instance().addMapLayer(lyr)
-            except Exception as exc:
-                logger.warning("Could not add layer from subprocess: %s", exc)
+            self._add_layer_to_project(layer_info)
 
         self.on_finalize(result)
         self._run_button.setEnabled(True)
@@ -468,6 +482,33 @@ class BaseApp(ABC):
         """
         pass
 
+    def _add_layer_to_project(self, layer_info: dict) -> None:
+        """Slot: resolve *layer_info* to a real QGIS layer and add it to the project."""
+        source = layer_info.get("source", "")
+        name = layer_info.get("name") or Path(source).stem
+        provider = layer_info.get("provider", "ogr")
+        layer_type = layer_info.get("layer_type", "auto")
+
+        if not source:
+            logger.warning("add_output_layer called with empty source — skipping")
+            return
+
+        lyr = None
+        if layer_type == "raster":
+            lyr = QgsRasterLayer(source, name, provider)
+        elif layer_type == "vector":
+            lyr = QgsVectorLayer(source, name, provider)
+        else:
+            # Auto-detect: try raster first (gdal), fall back to vector (ogr)
+            lyr = QgsRasterLayer(source, name, "gdal")
+            if not lyr.isValid():
+                lyr = QgsVectorLayer(source, name, "ogr")
+
+        if lyr and lyr.isValid():
+            QgsProject.instance().addMapLayer(lyr)
+        else:
+            logger.warning("Could not load layer '%s' from '%s'", name, source)
+
     # --- Utility methods for app developers ---
 
     def log(self, message: str) -> None:
@@ -481,6 +522,45 @@ class BaseApp(ABC):
             self._progress_bar.setRange(0, maximum)
             self._progress_bar.setValue(value)
             self._progress_bar.setVisible(True)
+
+    def add_output_layer(
+        self,
+        source: str | Path,
+        name: str | None = None,
+        provider: str = "ogr",
+        layer_type: str = "auto",
+    ) -> None:
+        """Add a layer to the QGIS map canvas via the layer bridge signal.
+
+        This is safe to call from ``on_finalize()`` or any main-thread context.
+        The layer is loaded and added to the current project immediately.
+
+        Args:
+            source: File path or data source URI for the layer.
+            name: Display name in the layer tree. Defaults to the file stem.
+            provider: QGIS data-provider key (``"ogr"``, ``"gdal"``,
+                ``"postgres"``, etc.).
+            layer_type: ``"vector"``, ``"raster"``, or ``"auto"`` (tries
+                raster then vector).
+        """
+        if self._layer_bridge is None:
+            logger.warning(
+                "add_output_layer called before widget was built — adding directly"
+            )
+            self._add_layer_to_project({
+                "source": str(source),
+                "name": name or Path(source).stem,
+                "provider": provider,
+                "layer_type": layer_type,
+            })
+            return
+
+        self._layer_bridge.layer_requested.emit({
+            "source": str(source),
+            "name": name or Path(source).stem,
+            "provider": provider,
+            "layer_type": layer_type,
+        })
 
     def get_project(self) -> QgsProject:
         """Convenience accessor for the current QGIS project."""

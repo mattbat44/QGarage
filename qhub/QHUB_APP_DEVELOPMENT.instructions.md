@@ -147,7 +147,7 @@ Registers a declarative input. The framework auto-generates the Qt widget.
    QgsProject.instance().addMapLayer(QgsRasterLayer(path, name))
    ```
 
-   This is intercepted by the stub and replayed on the QGIS main thread when the subprocess finishes. Only raster layers loaded from file paths are currently supported for auto-replay.
+   This is intercepted by the stub and replayed on the QGIS main thread when the subprocess finishes. Both vector and raster layers are auto-detected during replay.
 
 6. **For file I/O with vector layer geometry**, use the `.source()` path (a GeoJSON file) and process it with standard Python libraries (e.g., `json`, `fiona`, `geopandas`, `osgeo.ogr`). Do NOT use `QgsVectorFileWriter` for new output — it is a no-op stub.
 
@@ -164,17 +164,34 @@ def validate_inputs(self, inputs):
     return None
 ```
 
+### `add_output_layer(source, name=None, provider="ogr", layer_type="auto")`
+
+Add a layer to the QGIS map canvas via a Qt signal. Safe to call from `on_finalize()` or any main-thread context. This is the **preferred way** to deliver output layers without the subprocess round-trip.
+
+```python
+# In on_finalize — runs on the QGIS main thread
+def on_finalize(self, result):
+    if result.get("status") == "success":
+        self.add_output_layer(result["output_path"], "My Result")  # auto-detect type
+        self.add_output_layer("/tmp/out.tif", "Raster", provider="gdal", layer_type="raster")
+        self.add_output_layer("/tmp/out.geojson", "Vector", layer_type="vector")
+```
+
+Parameters:
+
+- `source` — File path or data source URI.
+- `name` — Display name (defaults to file stem).
+- `provider` — QGIS provider key: `"ogr"`, `"gdal"`, `"postgres"`, etc.
+- `layer_type` — `"vector"`, `"raster"`, or `"auto"` (tries raster/gdal first, then vector/ogr).
+
 ### `on_finalize(self, result: dict)`
 
-Optional override. Called on the **QGIS main thread** after the subprocess finishes. Use it to load result layers or update the project. The `result` dict contains everything returned by `execute_logic()`.
+Optional override. Called on the **QGIS main thread** after the subprocess finishes. Use it to load result layers or update the project. The `result` dict contains everything returned by `execute_logic()`. Use `self.add_output_layer()` to deliver layers.
 
 ```python
 def on_finalize(self, result):
     if result.get("status") == "success" and result.get("output_path"):
-        from qgis.core import QgsRasterLayer, QgsProject
-        layer = QgsRasterLayer(result["output_path"], "Result")
-        if layer.isValid():
-            QgsProject.instance().addMapLayer(layer)
+        self.add_output_layer(result["output_path"], "Result")
 ```
 
 ### `on_load()` / `on_unload()`
@@ -271,7 +288,7 @@ self.add_input("output_folder", "Output Folder", InputType.FOLDER_PATH, group="O
 self.add_input("output_name", "Output Name", InputType.STRING, group="Output")
 ```
 
-### Pattern: Using on_finalize for Complex Layer Loading
+### Pattern: Using on_finalize + add_output_layer
 
 ```python
 def execute_logic(self, inputs):
@@ -282,18 +299,13 @@ def execute_logic(self, inputs):
         "output_files": [
             {"path": "/tmp/a.tif", "name": "Layer A"},
             {"path": "/tmp/b.tif", "name": "Layer B"},
+            {"path": "/tmp/c.geojson", "name": "Layer C"},
         ]
     }
 
 def on_finalize(self, result):
-    from qgis.core import QgsRasterLayer, QgsVectorLayer, QgsProject
     for f in result.get("output_files", []):
-        if f["path"].endswith((".tif", ".tiff")):
-            lyr = QgsRasterLayer(f["path"], f["name"])
-        else:
-            lyr = QgsVectorLayer(f["path"], f["name"], "ogr")
-        if lyr.isValid():
-            QgsProject.instance().addMapLayer(lyr)
+        self.add_output_layer(f["path"], f["name"])  # auto-detect type
 ```
 
 ## Critical Do's and Don'ts
@@ -307,6 +319,7 @@ def on_finalize(self, result):
 - Use `os.path.join` or `pathlib.Path` for cross-platform paths.
 - List all pip dependencies in `requirements.txt`.
 - Use `on_finalize()` for any QGIS-side post-processing (this runs in real QGIS, not the stub).
+- Use `self.add_output_layer(path, name)` in `on_finalize()` to load layers — it is signal-based and the **preferred** way to deliver layers.
 
 ### DON'T
 
@@ -341,7 +354,7 @@ If you have an existing `QgsProcessingAlgorithm`, follow these steps:
    - Use `layer.source()` to get the GeoJSON file path for vector data.
    - Use `layer.crs().authid()` for CRS strings.
 
-3. **Handle layer output** via `QgsProject.instance().addMapLayer()` in `execute_logic()` (auto-replayed) or via `on_finalize()` for complex cases.
+3. **Handle layer output** via `QgsProject.instance().addMapLayer()` in `execute_logic()` (auto-replayed) or preferably via `self.add_output_layer(path, name)` in `on_finalize()`.
 
 4. **Create `app_meta.json`** with matching `id`, `class_name`, etc.
 

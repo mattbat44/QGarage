@@ -235,7 +235,6 @@ class UvBridge:
         config_path: Path,
         requirements_path: Optional[Path] = None,
         venv_site_packages: Optional[str] = None,
-        stderr_log_path: Optional[Path] = None,
     ) -> "subprocess.Popen":
         """Run an app's execute_logic in an isolated uv subprocess.
 
@@ -248,7 +247,6 @@ class UvBridge:
             config_path:        Path to the JSON config file consumed by the runner.
             requirements_path:  Optional path to a requirements.txt for extra packages.
             venv_site_packages: Optional path to inject via PYTHONPATH (app venv).
-            stderr_log_path:    Optional path to capture stderr (uv errors, etc.).
 
         Returns:
             The Popen object for the spawned process.
@@ -278,22 +276,16 @@ class UvBridge:
                 else venv_site_packages
             )
 
-        stderr_file = None
-        if stderr_log_path:
-            stderr_file = open(stderr_log_path, "w", encoding="utf-8")
-
         if platform.system() == "Windows":
             process = _sp.Popen(
                 cmd,
                 env=launch_env,
-                stderr=stderr_file,
                 creationflags=_CREATE_NEW_CONSOLE,
             )
         else:
             process = _sp.Popen(
                 cmd,
                 env=launch_env,
-                stderr=stderr_file,
                 start_new_session=True,
             )
 
