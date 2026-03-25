@@ -1,4 +1,4 @@
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
@@ -146,7 +146,6 @@ class BaseApp(ABC):
 
     # --- Abstract method ---
 
-    @abstractmethod
     def execute_logic(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Execute the app's core logic.
 
@@ -155,8 +154,15 @@ class BaseApp(ABC):
 
         Returns:
             Dictionary with at least a 'status' key ('success' or 'error').
+
+        Note:
+            Must be overridden in *declarative mode* apps.  Not called by the
+            framework when ``build_dynamic_widget()`` returns a widget.
         """
-        ...
+        raise NotImplementedError(
+            f"{type(self).__name__} must implement execute_logic() when using "
+            "declarative mode, or build_dynamic_widget() for a custom UI."
+        )
 
     # --- Optional hooks ---
 
@@ -172,11 +178,38 @@ class BaseApp(ABC):
 
     # --- Widget generation ---
 
+    def build_dynamic_widget(self) -> Optional[QWidget]:
+        """Override to provide a fully custom Qt widget for this app.
+
+        Return a :class:`QWidget` to opt into *dynamic mode* — the framework
+        will host it directly inside a scroll area without generating any
+        declarative form.  Return ``None`` (the default) to use the standard
+        declarative form built from :meth:`add_input` calls.
+
+        In dynamic mode you are responsible for all UI logic, including
+        triggering your own business logic and wiring Qt signals.
+        :meth:`execute_logic` is **not** called by the framework in dynamic
+        mode.
+        """
+        return None
+
     def build_widget(self) -> QWidget:
-        """Generate the UI from declared InputSpecs.
+        """Generate the UI for this app.
+
+        If :meth:`build_dynamic_widget` returns a widget it is used directly
+        (dynamic mode).  Otherwise the declarative form is generated from the
+        :class:`InputSpec` list built by :meth:`add_input` calls.
 
         Called by the QHub dashboard, not by the app developer.
         """
+        dynamic = self.build_dynamic_widget()
+        if dynamic is not None:
+            self._widget = dynamic
+            # Wire the layer bridge so add_output_layer() works from dynamic apps too
+            self._layer_bridge = _LayerBridge()
+            self._layer_bridge.layer_requested.connect(self._add_layer_to_project)
+            return self._widget
+
         self._widget = QWidget()
         main_layout = QVBoxLayout(self._widget)
         main_layout.setContentsMargins(12, 12, 12, 12)

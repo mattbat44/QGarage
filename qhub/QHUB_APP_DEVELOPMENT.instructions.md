@@ -198,6 +198,69 @@ def on_finalize(self, result):
 
 Optional lifecycle hooks. Called when the app is loaded/unloaded by the registry. Rarely needed.
 
+---
+
+## Dynamic (Custom) UI Mode
+
+By default QHub auto-generates a form from your `add_input()` declarations (**declarative mode**). If you need a richer interface — multi-step wizards, tab widgets, canvas interactions, real-time plots — you can opt into **dynamic mode** by overriding `build_dynamic_widget()`.
+
+### How it works
+
+| Feature                | Declarative mode                  | Dynamic mode                                                 |
+| ---------------------- | --------------------------------- | ------------------------------------------------------------ |
+| UI source              | Auto-generated from `add_input()` | Your own `QWidget` from `build_dynamic_widget()`             |
+| `execute_logic()`      | **Required** — runs in subprocess | **Not called** — wire your own signals                       |
+| Subprocess isolation   | Yes (uv run --isolated)           | No — all logic on the QGIS main thread (or your own threads) |
+| Progress / output area | Provided automatically            | You provide them                                             |
+
+### Minimal example
+
+```python
+from qgis.PyQt.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
+from qhub.core.base_app import BaseApp
+
+
+class MyDynamicApp(BaseApp):
+    def build_dynamic_widget(self) -> QWidget:
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+
+        layout.addWidget(QLabel(self.app_name))
+
+        self._output = QTextEdit()
+        self._output.setReadOnly(True)
+        layout.addWidget(self._output)
+
+        run_btn = QPushButton("Run")
+        run_btn.clicked.connect(self._run)
+        layout.addWidget(run_btn)
+
+        return widget
+
+    def _run(self):
+        # Runs on the QGIS main thread — safe to call QGIS APIs directly
+        self._output.append("Hello from dynamic mode!")
+```
+
+### Rules for dynamic mode
+
+1. **Return a `QWidget`** from `build_dynamic_widget()`. The framework hosts it in a scroll area.
+2. **`execute_logic()` is never called.** You do not need to implement it.
+3. **All logic runs on the QGIS main thread** (or threads you manage yourself). There is no subprocess isolation.
+4. **QGIS APIs are fully available** — you have a live `QgsProject`, `QgsMapCanvas`, layers, etc.
+5. Use `self.app_meta`, `self.app_dir`, and `self.app_id` for metadata/paths.
+6. `on_load()` / `on_unload()` lifecycle hooks still fire normally.
+7. You can use any Qt widget from `qgis.PyQt.QtWidgets` or QGIS-specific widgets (`QgsMapLayerComboBox`, etc.).
+
+### When to choose dynamic mode
+
+- The tool needs a **multi-step wizard** or custom tab layout.
+- You need **instant / reactive** feedback that doesn't fit a single "Run" click.
+- The tool manipulates the **map canvas** directly (e.g., rubber-band drawing, picking features).
+- You want a **live dashboard** (charts, real-time stats) rather than a one-shot processor.
+
+---
+
 ## Execution Flow
 
 1. User clicks **Run** in the QHub dashboard.
@@ -394,6 +457,139 @@ from qgis.PyQt.QtCore import ...      # CORRECT
 ```
 
 Never use `PyQt5` or `PyQt6` directly — this breaks compatibility between QGIS 3.x and 4.0.
+
+## Creating a New App — Step-by-Step Checklist
+
+Follow every step in order. Each one is a common reason an app fails to open.
+
+### 1. Create the folder
+
+```
+qhub/apps/<app_id>/
+```
+
+`<app_id>` must be a valid Python identifier (lowercase, underscores, no spaces). Example: `dem_slope`.
+
+### 2. Create `app_meta.json`
+
+```json
+{
+  "name": "DEM Slope",
+  "id": "dem_slope",
+  "version": "1.0.0",
+  "author": "Your Name",
+  "description": "Computes slope from a DEM raster.",
+  "icon_path": "",
+  "entry_point": "main.py",
+  "class_name": "DemSlopeApp",
+  "tags": ["dem", "raster"]
+}
+```
+
+**Checklist:**
+
+- [ ] `"id"` exactly matches the folder name.
+- [ ] `"class_name"` exactly matches the class name in `main.py`.
+- [ ] The JSON is valid (no trailing commas, all strings quoted).
+
+### 3. Create `main.py`
+
+```python
+from qhub.core.base_app import BaseApp, InputType
+
+
+class DemSlopeApp(BaseApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.add_input("dem", "DEM Raster", InputType.RASTER_LAYER)
+
+    def execute_logic(self, inputs):
+        dem = inputs["dem"]
+        self.log(f"Processing: {dem.name()}")
+        return {"status": "success", "message": "Done"}
+```
+
+**Checklist:**
+
+- [ ] `super().__init__(**kwargs)` is the first line of `__init__`. The `**kwargs` must be passed through — without it, `app_meta` and `app_dir` are never set, and the app will crash on load with `TypeError`.
+- [ ] The class name matches `"class_name"` in `app_meta.json` exactly (case-sensitive).
+- [ ] `execute_logic` returns a dict with at least `{"status": ..., "message": ...}`.
+- [ ] The import is `from qhub.core.base_app import BaseApp, InputType` — not a relative import.
+- [ ] There are no syntax errors (run `python -m py_compile main.py` to check).
+- [ ] No code at module level calls Qt or QGIS APIs — only plain Python.
+
+### 4. (Optional) Create `requirements.txt`
+
+Only needed if your app uses packages not bundled with QGIS. Leave the file empty or omit it if you have no extra dependencies.
+
+### 5. Deploy and reload
+
+```powershell
+.\install-qhub-plugin.ps1
+```
+
+Then in QGIS: **Plugins → QHub → (close and reopen dock, or restart QGIS)**. The new card should appear in the dashboard.
+
+---
+
+## Why My App Doesn't Open — Diagnostic Guide
+
+When clicking **Open** on an app card does nothing (or snaps back to the card grid), it means the app **failed to load or failed to build its UI**. Work through these checks in order.
+
+### Step 1 — Check the app state badge
+
+If the card shows an orange **"Error"** or red **"Crashed"** badge, the app failed to _load_. The error happened during import of `main.py` or during `__init__`. See Step 2.
+
+If the card shows no badge (i.e. it looks healthy) but opening it immediately returns to the card grid, the app loaded fine but `build_widget()` / `build_dynamic_widget()` threw an exception. See Step 3.
+
+### Step 2 — Loading errors (badge on card)
+
+The most common causes, in order:
+
+| Cause                                                                      | Fix                                                        |
+| -------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `super().__init__(**kwargs)` missing or called without `**kwargs`          | Add it as the very first line of `__init__`                |
+| `"class_name"` in `app_meta.json` doesn't match the class in `main.py`     | Make them identical, case-sensitive                        |
+| `"id"` in `app_meta.json` doesn't match the folder name                    | Rename one to match the other                              |
+| Syntax error in `main.py`                                                  | Run `python -m py_compile main.py` in a terminal           |
+| Top-level import fails (e.g. a package not available on QGIS's `sys.path`) | Move third-party imports inside `execute_logic()`          |
+| Relative import used (`from .something import X`)                          | Use absolute imports: `from qhub.core.base_app import ...` |
+
+To see the full traceback: open the QGIS **Python Console** and look for the error logged by QHub, or click the **Reset** button on the card — the error message is stored in `AppHealth.error_text`.
+
+### Step 3 — UI build errors (no badge, but opens and snaps back)
+
+This means the app was loaded successfully but crashed inside `build_widget()` or `build_dynamic_widget()`. The dashboard catches the exception and restores the card grid.
+
+Common causes:
+
+| Cause                                                                                               | Fix                                                                          |
+| --------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------- |
+| **Dynamic mode:** `build_dynamic_widget()` raises an exception                                      | Check the QGIS Python Console for the traceback                              |
+| **Dynamic mode:** `build_dynamic_widget()` returns `None` instead of a `QWidget`                    | Ensure all code paths return a `QWidget` instance                            |
+| Qt widget created with a bad parent or invalid arguments                                            | Construct widgets without a parent first, set layout explicitly              |
+| Calling a QGIS API that isn't available yet (e.g. accessing the project before QGIS is fully ready) | Move initialization into a slot or `on_load()`, not `build_dynamic_widget()` |
+
+To see the error: open the **QGIS Python Console** — the framework logs the full traceback via `logger.exception`.
+
+### Step 4 — App opens but Run does nothing (declarative mode)
+
+| Cause                                              | Fix                                                           |
+| -------------------------------------------------- | ------------------------------------------------------------- |
+| A required input is empty (e.g. no layer selected) | Fill all required fields before clicking Run                  |
+| `validate_inputs()` returns an error string        | Check the output area — the validation message is shown there |
+| `execute_logic` not implemented                    | Implement it (it raises `NotImplementedError` by default)     |
+
+### Step 5 — App opens but subprocess window never appears
+
+The subprocess launch itself failed.
+
+| Cause                                            | Fix                                               |
+| ------------------------------------------------ | ------------------------------------------------- |
+| `uv` not found or not configured                 | Check QHub settings — the `uv` path must be valid |
+| `requirements.txt` lists an unresolvable package | Remove or fix the broken dependency               |
+
+---
 
 ## Testing
 

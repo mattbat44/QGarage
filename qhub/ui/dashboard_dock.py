@@ -188,7 +188,12 @@ class DashboardDock(QgsDockWidget):
         if entry is None or entry.instance is None:
             return
         self._toolbar.setVisible(False)
-        self._app_host.show_app(entry.instance)
+        try:
+            self._app_host.show_app(entry.instance)
+        except Exception:
+            logger.exception("Failed to build UI for app '%s'", app_id)
+            self._show_cards()  # restore toolbar + card grid
+            return
         self._stack.setCurrentIndex(1)
 
     # --- Slots ---
