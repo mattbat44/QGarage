@@ -22,3 +22,6 @@ Thumbs.db
 
 # App venvs (each app manages its own)
 qhub/apps/*/.venv/
+
+
+install-qhub-plugin.ps1
