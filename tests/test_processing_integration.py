@@ -215,7 +215,7 @@ def test_processing_provider_filters_dynamic_apps():
 
 
 def test_algorithm_process_execution():
-    """Test algorithm execution."""
+    """Test algorithm execution uses the isolated runner."""
     app_meta = {
         "id": "test_app",
         "name": "Test App",
@@ -244,11 +244,32 @@ def test_algorithm_process_execution():
     algorithm.parameterAsInt = Mock(side_effect=lambda p, k, c: parameters.get(k, 0))
     algorithm.parameterAsBool = Mock(side_effect=lambda p, k, c: parameters.get(k, False))
 
-    result = algorithm.processAlgorithm(parameters, context, feedback)
+    isolated_result = {
+        "status": "success",
+        "message": "Processed Alice 3 times (enabled=True)",
+        "__added_layers__": [],
+    }
+
+    with patch(
+        "qgarage.processing.algorithm_wrapper.launch_isolated_app_run"
+    ) as launch_run, patch(
+        "qgarage.processing.algorithm_wrapper.wait_for_isolated_app_result"
+    ) as wait_for_result:
+        launch_run.return_value = {
+            "process": Mock(),
+            "output_path": Path("/tmp/output.json"),
+            "stderr_log_path": Path("/tmp/stderr.log"),
+            "tmp_dir": Mock(),
+        }
+        wait_for_result.return_value = isolated_result
+
+        result = algorithm.processAlgorithm(parameters, context, feedback)
 
     assert result["status"] == "success"
     assert "Alice" in result["message"]
     assert "3 times" in result["message"]
+    launch_run.assert_called_once()
+    wait_for_result.assert_called_once()
 
 
 if __name__ == "__main__":

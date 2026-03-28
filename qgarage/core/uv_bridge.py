@@ -21,6 +21,15 @@ _UV_CANDIDATE_DIRS_WIN = [
 ]
 
 
+def _wrap_windowed_command(command: Sequence[str], keep_open_on_failure: bool) -> list[str]:
+    """Wrap a Windows console command so startup failures remain visible."""
+    if platform.system() != "Windows" or not keep_open_on_failure:
+        return list(command)
+
+    quoted = subprocess.list2cmdline(list(command))
+    return ["cmd.exe", "/c", f"{quoted} || pause"]
+
+
 def _resolve_uv_executable(requested: str) -> str:
     """Return a resolved path to the uv executable.
 
@@ -235,18 +244,20 @@ class UvBridge:
         config_path: Path,
         requirements_path: Optional[Path] = None,
         venv_site_packages: Optional[str] = None,
+        show_window: bool = True,
     ) -> "subprocess.Popen":
         """Run an app's execute_logic in an isolated uv subprocess.
 
-        Opens a new console window and uses the *current* Python interpreter
-        (sys.executable – i.e. QGIS's Python) so that native packages like
-        GDAL are available without reinstallation.
+        Uses the *current* Python interpreter (sys.executable – i.e. QGIS's
+        Python) so that native packages like GDAL are available without
+        reinstallation.
 
         Args:
             runner_path:        Path to the generated runner script.
             config_path:        Path to the JSON config file consumed by the runner.
             requirements_path:  Optional path to a requirements.txt for extra packages.
             venv_site_packages: Optional path to inject via PYTHONPATH (app venv).
+            show_window:        When True, open a separate console window.
 
         Returns:
             The Popen object for the spawned process.
@@ -277,20 +288,21 @@ class UvBridge:
             )
 
         if platform.system() == "Windows":
+            creationflags = _CREATE_NEW_CONSOLE if show_window else _CREATE_NO_WINDOW
+            popen_cmd = _wrap_windowed_command(cmd, keep_open_on_failure=show_window)
             process = _sp.Popen(
-                cmd,
+                popen_cmd,
                 env=launch_env,
-                creationflags=_CREATE_NEW_CONSOLE,
+                creationflags=creationflags,
             )
         else:
-            process = _sp.Popen(
-                cmd,
-                env=launch_env,
-                start_new_session=True,
-            )
+            popen_kwargs = {"env": launch_env}
+            if show_window:
+                popen_kwargs["start_new_session"] = True
+            process = _sp.Popen(cmd, **popen_kwargs)
 
         log_info(
-            f"Launched isolated app process (pid={process.pid}): {' '.join(cmd)}",
+            f"Launched isolated app process (pid={process.pid}, show_window={show_window}): {' '.join(cmd)}",
             "uv_bridge",
         )
         return process

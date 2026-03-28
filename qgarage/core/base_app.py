@@ -40,7 +40,7 @@ from qgis.core import (
 )
 
 from .settings import get_uv_executable, ParameterCache
-from .subprocess_runner import ProcessMonitor, RUNNER_SCRIPT, serialize_inputs
+from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge
 
 logger = logging.getLogger("qgarage.base_app")
@@ -608,59 +608,22 @@ class BaseApp(ABC):
 
     def _launch_isolated(self, inputs: dict) -> None:
         """Serialise inputs, write runner+config, spawn uv run --isolated."""
-        import tempfile
-
-        # Temp directory lives until monitor thread is done
-        self._tmp_dir = tempfile.TemporaryDirectory(prefix="qgarage_run_")
-        tmp = Path(self._tmp_dir.name)
-
-        # Serialise all QGIS objects to JSON-safe equivalents
-        serialised = serialize_inputs(inputs, tmp)
-
-        inputs_path = tmp / "inputs.json"
-        output_path = tmp / "output.json"
-        runner_path = tmp / "runner.py"
-        config_path = tmp / "config.json"
-
-        inputs_path.write_text(
-            __import__("json").dumps(serialised, default=str), encoding="utf-8"
+        launch = launch_isolated_app_run(
+            app_dir=self.app_dir,
+            app_meta=self.app_meta,
+            inputs=inputs,
+            uv_bridge=self._get_uv_bridge(),
+            keep_open=True,
         )
-        runner_path.write_text(RUNNER_SCRIPT, encoding="utf-8")
-
-        # Resolve app plugin dir so runner can import qgarage package
-        import qgarage
-
-        plugin_dir = Path(qgarage.__file__).parent
-
-        requirements_path = self.app_dir / "requirements.txt"
-        venv_sp = self._get_uv_bridge().get_site_packages(self.app_dir)
-        stderr_log = tmp / "stderr.log"
-
-        app_meta = dict(self.app_meta)
-        config = {
-            "inputs_path": str(inputs_path),
-            "output_path": str(output_path),
-            "plugin_dir": str(plugin_dir),
-            "app_dir": str(self.app_dir),
-            "module_path": str(
-                self.app_dir / self.app_meta.get("entry_point", "main.py")
-            ),
-            "class_name": self.app_meta.get("class_name", "App"),
-            "app_meta": app_meta,
-            "stderr_log_path": str(stderr_log),
-        }
-        config_path.write_text(__import__("json").dumps(config), encoding="utf-8")
-
-        process = self._get_uv_bridge().launch_app_isolated(
-            runner_path=runner_path,
-            config_path=config_path,
-            requirements_path=requirements_path if requirements_path.exists() else None,
-            venv_site_packages=venv_sp,
-        )
+        self._tmp_dir = launch["tmp_dir"]
 
         # Start monitor thread – polls for output.json, signals us when done
         self._monitor = ProcessMonitor(
-            process, output_path, tmp, stderr_log_path=stderr_log, parent=None
+            launch["process"],
+            launch["output_path"],
+            launch["tmp_path"],
+            stderr_log_path=launch["stderr_log_path"],
+            parent=None,
         )
         self._monitor.completed.connect(self._on_subprocess_complete)
         self._monitor.error.connect(self._on_subprocess_error)

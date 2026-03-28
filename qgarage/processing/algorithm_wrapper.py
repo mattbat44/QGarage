@@ -12,6 +12,12 @@ from qgis.core import (
 )
 
 from ..core.base_app import BaseApp
+from ..core.settings import get_uv_executable
+from ..core.subprocess_runner import (
+    launch_isolated_app_run,
+    wait_for_isolated_app_result,
+)
+from ..core.uv_bridge import UvBridge
 from .parameter_mapper import create_processing_parameter, extract_parameter_value
 
 logger = logging.getLogger("qgarage.processing")
@@ -38,6 +44,7 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         self.app_dir = app_dir
         self.app_class = app_class
         self._app_instance: BaseApp | None = None
+        self._uv_bridge: UvBridge | None = None
 
     def _get_app_instance(self) -> BaseApp:
         """Get or create the BaseApp instance.
@@ -45,6 +52,11 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         We create a fresh instance each time to ensure clean state.
         """
         return self.app_class(app_meta=self.app_meta, app_dir=self.app_dir)
+
+    def _get_uv_bridge(self) -> UvBridge:
+        if self._uv_bridge is None:
+            self._uv_bridge = UvBridge(get_uv_executable())
+        return self._uv_bridge
 
     def tr(self, string: str) -> str:
         """Translate a string using Qt translation functions."""
@@ -154,13 +166,31 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         # Report progress
         feedback.pushInfo(f"Running {self.displayName()}...")
 
-        # Execute the app's logic
+        # Execute the app's logic in the app's isolated uv environment
         try:
-            result = app.execute_logic(inputs)
+            launch = launch_isolated_app_run(
+                app_dir=self.app_dir,
+                app_meta=self.app_meta,
+                inputs=inputs,
+                uv_bridge=self._get_uv_bridge(),
+                keep_open=False,
+            )
+            try:
+                result = wait_for_isolated_app_result(
+                    process=launch["process"],
+                    output_path=launch["output_path"],
+                    stderr_log_path=launch["stderr_log_path"],
+                    feedback=feedback,
+                )
+            finally:
+                launch["tmp_dir"].cleanup()
         except Exception as e:
             feedback.reportError(f"Execution failed: {e}")
             logger.exception(f"App '{self.name()}' failed during execute_logic")
             raise
+
+        for layer_info in result.get("__added_layers__", []):
+            app._add_layer_to_project(layer_info)
 
         # Check result status
         status = result.get("status", "unknown")
