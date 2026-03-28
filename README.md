@@ -14,6 +14,7 @@ A lightweight plugin for QGIS (3.28+) that provides a unified dashboard for inst
 - **📂 Rich Input Types** — Vector layers, raster layers, CRS, files, folders, fields, text areas, dropdowns, and more
 - **🗺️ Direct Layer Delivery** — Return results directly to the QGIS map canvas via `add_output_layer()`
 - **🔌 Easy Installation** — Install apps from ZIP files or local folders without manual setup
+- **⚙️ Processing Framework Integration** — Declarative apps automatically appear in the QGIS Processing Toolbox alongside the dashboard UI
 
 ## 📋 Requirements
 
@@ -85,10 +86,51 @@ See [Creating Your First App](#creating-your-first-app) below.
 | `qgarage/core/app_registry.py`     | Discovers, loads, and tracks app health                |
 | `qgarage/core/app_loader.py`       | Dynamic import with fault isolation                    |
 | `qgarage/core/uv_bridge.py`        | Manages `uv` venv creation and subprocess execution    |
+| `qgarage/processing/processing_provider.py` | QGIS Processing framework provider for QGarage apps |
+| `qgarage/processing/algorithm_wrapper.py` | Wraps BaseApp as QgsProcessingAlgorithm |
 | `qgarage/ui/dashboard_dock.py`     | Main QgsDockWidget with app card grid                  |
 | `qgarage/ui/app_host_widget.py`    | Container for running app's auto-generated UI          |
 | `qgarage/themes/theme_manager.py`  | Dark/light theme detection and application            |
 | `qgarage/workers/download_worker.py` | QThread workers for app installation                   |
+
+## 🔧 QGIS Processing Framework Integration
+
+QGarage automatically exposes declarative apps (those using `add_input()` + `execute_logic()`) to the **QGIS Processing Toolbox**. This provides two ways to run your apps:
+
+### Using Apps via Processing Toolbox
+
+1. **Open Processing Toolbox**: View → Panels → Processing Toolbox
+2. **Find QGarage Apps**: Look for the "QGarage" provider in the toolbox
+3. **Run Apps**: Double-click any app to open the standard Processing dialog
+4. **Use in Models**: QGarage apps can be used in Processing Models and batch processing
+
+### How It Works
+
+- **Automatic Registration**: Declarative apps automatically appear in the Processing Toolbox
+- **Parameter Mapping**: Each `InputType` is mapped to the appropriate `QgsProcessingParameter`
+- **Shared Logic**: Both the dashboard UI and Processing use the same `execute_logic()` method
+- **Dynamic Apps Excluded**: Apps with custom UIs (using `build_dynamic_widget()`) only appear in the dashboard
+
+### Benefits
+
+- **Batch Processing**: Run apps on multiple inputs using Processing's batch mode
+- **Model Integration**: Chain QGarage apps with other QGIS algorithms in graphical models
+- **Command Line**: Execute apps from Python console or scripts via `processing.run()`
+- **Backwards Compatible**: Existing QGarage dashboard UI continues to work unchanged
+
+### Example: Running from Python Console
+
+```python
+import processing
+
+# Run a QGarage app via Processing
+result = processing.run("qgarage:hello_world", {
+    'name': 'Alice',
+    'count': 3
+})
+
+print(result)
+```
 
 ## 📱 Creating Your First App
 

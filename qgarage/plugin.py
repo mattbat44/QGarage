@@ -8,10 +8,13 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.gui import QgisInterface
 
+from qgis.core import QgsApplication
+
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
 from .core.settings import get_uv_executable
 from .core.uv_bridge import UvBridge
+from .processing.processing_provider import QGarageProcessingProvider
 from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
@@ -29,6 +32,7 @@ class QGaragePlugin:
         self.action: Optional[QAction] = None
         self.registry: Optional[AppRegistry] = None
         self.uv_bridge: Optional[UvBridge] = None
+        self.processing_provider: Optional[QGarageProcessingProvider] = None
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -65,8 +69,20 @@ class QGaragePlugin:
         self.dock.setVisible(False)
         self.dock.visibilityChanged.connect(self.action.setChecked)
 
+        # Register Processing provider
+        if self.registry is not None:
+            self.processing_provider = QGarageProcessingProvider(
+                self.registry, icon_path=icon_path
+            )
+            QgsApplication.processingRegistry().addProvider(self.processing_provider)
+
     def unload(self):
         """Called by QGIS when the plugin is unloaded."""
+        # Unregister Processing provider
+        if self.processing_provider is not None:
+            QgsApplication.processingRegistry().removeProvider(self.processing_provider)
+            self.processing_provider = None
+
         if self.registry is not None:
             self.registry.unload_all()
             self.registry = None
@@ -113,6 +129,10 @@ class QGaragePlugin:
         self.registry.register_entry(entry)
         self.registry.load_app(app_id)
         self.dock.add_card(entry)
+
+        # Refresh Processing provider to include the new app
+        if self.processing_provider is not None:
+            self.processing_provider.refreshAlgorithms()
 
     def _on_new_app_requested(self):
         dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
