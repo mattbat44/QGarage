@@ -1,0 +1,13 @@
+{
+    "name": "Hello World",
+    "id": "hello_world",
+    "version": "1.0.0",
+    "author": "QGarage",
+    "description": "A simple test app that demonstrates the QGarage framework.",
+    "entry_point": "main.py",
+    "class_name": "HelloWorldApp",
+    "tags": [
+        "demo",
+        "test"
+    ]
+}

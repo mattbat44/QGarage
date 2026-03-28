@@ -1,4 +1,4 @@
-"""Shared fixtures for QHub tests.
+"""Shared fixtures for QGarage tests.
 
 All fixtures here are QGIS-free — they mock the qgis package so that
 the pure-Python core modules can be imported and tested outside QGIS.
@@ -15,12 +15,12 @@ import pytest
 
 
 # ---------------------------------------------------------------------------
-# Mock the entire qgis package tree before any qhub module is imported.
+# Mock the entire qgis package tree before any qgarage module is imported.
 # ---------------------------------------------------------------------------
 
 
 def _install_qgis_mock():
-    """Install a recursive MagicMock for every qgis.* path used by qhub."""
+    """Install a recursive MagicMock for every qgis.* path used by qgarage."""
 
     if "qgis" in sys.modules and not isinstance(sys.modules["qgis"], MagicMock):
         return  # running inside real QGIS — nothing to do
@@ -119,7 +119,7 @@ def make_app_dir(tmp_apps_dir: Path):
 
 
 MINIMAL_MAIN_PY = textwrap.dedent("""\
-    from qhub.core.base_app import BaseApp, InputType
+    from qgarage.core.base_app import BaseApp, InputType
 
     class App(BaseApp):
         def __init__(self, **kwargs):

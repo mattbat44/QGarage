@@ -5,25 +5,25 @@ from pathlib import Path
 
 import pytest
 
-from qhub.core.app_state import AppHealth, AppState
+from qgarage.core.app_state import AppHealth, AppState
 
 
 class TestAppEntry:
     def test_app_id_from_meta(self):
-        from qhub.core.app_registry import AppEntry
+        from qgarage.core.app_registry import AppEntry
 
         entry = AppEntry(Path("/fake"), {"id": "my_app", "name": "My App"})
         assert entry.app_id == "my_app"
         assert entry.app_name == "My App"
 
     def test_app_name_falls_back_to_id(self):
-        from qhub.core.app_registry import AppEntry
+        from qgarage.core.app_registry import AppEntry
 
         entry = AppEntry(Path("/fake"), {"id": "my_app"})
         assert entry.app_name == "my_app"
 
     def test_fresh_entry_is_discovered(self):
-        from qhub.core.app_registry import AppEntry
+        from qgarage.core.app_registry import AppEntry
 
         entry = AppEntry(Path("/fake"), {"id": "x"})
         assert entry.health.state == AppState.DISCOVERED
@@ -36,7 +36,7 @@ class TestRegistryDiscover:
     def _make_registry(self, apps_dir: Path):
         """Create a registry with a stubbed UvBridge (discovery doesn't need uv)."""
         from unittest.mock import MagicMock
-        from qhub.core.app_registry import AppRegistry
+        from qgarage.core.app_registry import AppRegistry
 
         mock_uv = MagicMock()
         return AppRegistry(apps_dir, mock_uv)

@@ -1,0 +1,26 @@
+[general]
+name=QGarage
+qgisMinimumVersion=3.28
+qgisMaximumVersion=4.00
+description=Modular app-hosting framework for QGIS. Install, manage, and run isolated mini-tools from a single dashboard.
+version=0.1.0
+author=Matt Adams
+email=mattaadamsnz@gmail.com
+about=QGarage is a plugin-within-a-plugin framework. Each "App" runs in its own isolated uv virtual environment with fault tolerance, a modern card-based UI, and zero-friction developer experience. Features include: a dashboard with card-based UI for managing apps, per-app isolated virtual environments via uv, dynamic app loading with fault isolation, dark/light theme support, and a scaffold wizard for creating new apps.
+tracker=https://github.com/mattadams/qgarage/issues
+repository=https://github.com/mattadams/qgarage
+tags=tools,framework,dashboard,modular,apps,virtual-environment
+homepage=https://github.com/mattadams/qgarage
+category=Plugins
+icon=icon.svg
+experimental=True
+deprecated=False
+hasProcessingProvider=no
+server=False
+changelog=0.1.0 - Initial release
+    - Dashboard with card-based app management
+    - Per-app isolated uv virtual environments
+    - Dynamic app loading with fault isolation
+    - Dark/light theme support
+    - Install apps from ZIP or local folder
+    - Scaffold wizard for new app development

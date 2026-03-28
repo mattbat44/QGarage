@@ -1,7 +1,7 @@
 [project]
-name = "qhub"
+name = "qgarage"
 version = "0.1.0"
-description = "QHub - Modular App-Hosting Framework for QGIS"
+description = "QGarage - Modular App-Hosting Framework for QGIS"
 requires-python = ">=3.10"
 dependencies = []
 

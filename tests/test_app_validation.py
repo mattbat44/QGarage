@@ -1,4 +1,4 @@
-"""Validate that new apps conform to the QHub framework contract.
+"""Validate that new apps conform to the QGarage framework contract.
 
 These tests check the *structure* of an app (meta schema, file presence,
 class hierarchy) without requiring QGIS or uv at runtime. Use them as a
@@ -11,8 +11,8 @@ from pathlib import Path
 
 import pytest
 
-from qhub.core.app_state import AppState
-from qhub.core.constants import (
+from qgarage.core.app_state import AppState
+from qgarage.core.constants import (
     APP_META_FILENAME,
     DEFAULT_ENTRY_POINT,
     DEFAULT_CLASS_NAME,
@@ -81,7 +81,7 @@ def validate_app_structure(app_dir: Path) -> list[str]:
 def validate_app_class(app_dir: Path) -> list[str]:
     """Validate that the entry point contains a valid BaseApp subclass.
 
-    This imports the module, so it requires qhub.core.base_app to be
+    This imports the module, so it requires qgarage.core.base_app to be
     importable (but NOT QGIS at the module level — we mock the heavy bits).
     """
     import importlib.util
@@ -110,7 +110,7 @@ def validate_app_class(app_dir: Path) -> list[str]:
         errors.append(f"Class '{class_name}' not found in {entry.name}")
         return errors
 
-    from qhub.core.base_app import BaseApp
+    from qgarage.core.base_app import BaseApp
 
     if not issubclass(klass, BaseApp):
         errors.append(f"'{class_name}' does not inherit from BaseApp")
@@ -253,7 +253,7 @@ class TestHelloWorldApp:
 
     @pytest.fixture
     def hello_dir(self) -> Path:
-        return Path(__file__).resolve().parent.parent / "qhub" / "apps" / "hello_world"
+        return Path(__file__).resolve().parent.parent / "qgarage" / "apps" / "hello_world"
 
     def test_structure(self, hello_dir):
         if not hello_dir.exists():
