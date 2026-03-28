@@ -146,6 +146,9 @@ class AppRegistry:
                 log_info(f"Discovered toolbox: {toolbox_id}", "app_registry")
             else:
                 toolbox_entry = self._toolbox_entries[toolbox_id]
+                toolbox_entry.toolbox_meta = toolbox_meta
+                toolbox_entry.toolbox_dir = toolbox_dir
+                toolbox_entry.app_entries.clear()
 
             # Discover apps within the toolbox
             for child in toolbox_dir.iterdir():
@@ -168,13 +171,19 @@ class AppRegistry:
                         )
                         continue
 
-                    # Create app entry with toolbox reference
-                    if app_id not in self._entries:
+                    # Create or refresh app entry with toolbox reference
+                    entry = self._entries.get(app_id)
+                    if entry is None:
                         entry = AppEntry(child, app_meta, parent_toolbox_id=toolbox_id)
                         self._entries[app_id] = entry
-                        toolbox_entry.app_entries[app_id] = entry
                         discovered.append(entry)
                         log_info(f"Discovered app: {app_id} (in toolbox: {toolbox_id})", "app_registry")
+                    else:
+                        entry.app_dir = child
+                        entry.app_meta = app_meta
+                        entry.parent_toolbox_id = toolbox_id
+
+                    toolbox_entry.app_entries[app_id] = entry
 
                 except json.JSONDecodeError as e:
                     log_error(
@@ -245,7 +254,13 @@ class AppRegistry:
     def remove_app(self, app_id: str) -> None:
         """Unload and remove an app from the registry (does not delete files)."""
         self.unload_app(app_id)
-        self._entries.pop(app_id, None)
+        entry = self._entries.pop(app_id, None)
+        if entry is None or entry.parent_toolbox_id is None:
+            return
+
+        toolbox_entry = self._toolbox_entries.get(entry.parent_toolbox_id)
+        if toolbox_entry is not None:
+            toolbox_entry.app_entries.pop(app_id, None)
 
     def unload_all(self) -> None:
         """Unload all apps."""

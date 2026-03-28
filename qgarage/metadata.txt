@@ -15,7 +15,7 @@ category=Plugins
 icon=icon.svg
 experimental=True
 deprecated=False
-hasProcessingProvider=no
+hasProcessingProvider=yes
 server=False
 changelog=0.1.0 - Initial release
     - Dashboard with card-based app management

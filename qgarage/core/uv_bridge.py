@@ -235,6 +235,7 @@ class UvBridge:
         config_path: Path,
         requirements_path: Optional[Path] = None,
         venv_site_packages: Optional[str] = None,
+        show_console: bool = True,
     ) -> "subprocess.Popen":
         """Run an app's execute_logic in an isolated uv subprocess.
 
@@ -280,7 +281,9 @@ class UvBridge:
             process = _sp.Popen(
                 cmd,
                 env=launch_env,
-                creationflags=_CREATE_NEW_CONSOLE,
+                creationflags=(
+                    _CREATE_NEW_CONSOLE if show_console else _CREATE_NO_WINDOW
+                ),
             )
         else:
             process = _sp.Popen(

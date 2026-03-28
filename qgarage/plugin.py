@@ -6,10 +6,12 @@ from typing import Optional
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
+from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
 
-from .core.app_registry import AppEntry, AppRegistry, ToolboxEntry
+from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
+from .core.processing_provider import QGarageProcessingProvider
 from .core.settings import get_uv_executable
 from .core.uv_bridge import UvBridge
 from .ui.dashboard_dock import DashboardDock
@@ -28,6 +30,7 @@ class QGaragePlugin:
         self.dock: Optional[DashboardDock] = None
         self.action: Optional[QAction] = None
         self.registry: Optional[AppRegistry] = None
+        self.processing_provider: Optional[QGarageProcessingProvider] = None
         self.uv_bridge: Optional[UvBridge] = None
 
     def initGui(self):
@@ -54,6 +57,8 @@ class QGaragePlugin:
             self.registry = AppRegistry(APPS_DIR, self.uv_bridge)
             self.registry.discover()
             self.registry.load_all()
+            self.processing_provider = QGarageProcessingProvider(self.registry)
+            QgsApplication.processingRegistry().addProvider(self.processing_provider)
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
@@ -70,6 +75,10 @@ class QGaragePlugin:
         if self.registry is not None:
             self.registry.unload_all()
             self.registry = None
+
+        if self.processing_provider is not None:
+            QgsApplication.processingRegistry().removeProvider(self.processing_provider)
+            self.processing_provider = None
 
         if self.dock is not None:
             self.iface.removeDockWidget(self.dock)
@@ -110,6 +119,7 @@ class QGaragePlugin:
             # Re-discover to pick up the new/updated toolbox
             self.registry.discover()
             self.dock.refresh_cards()
+            self._refresh_processing_provider()
         else:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
@@ -127,8 +137,13 @@ class QGaragePlugin:
             self.registry.register_entry(entry)
             self.registry.load_app(item_id)
             self.dock.add_card(entry)
+            self._refresh_processing_provider()
 
     def _on_new_app_requested(self):
         dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
         dialog.app_created.connect(lambda app_id: self._on_app_installed(app_id, False))
         dialog.exec()
+
+    def _refresh_processing_provider(self) -> None:
+        if self.processing_provider is not None:
+            self.processing_provider.refreshAlgorithms()
