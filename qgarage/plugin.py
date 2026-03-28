@@ -8,7 +8,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.gui import QgisInterface
 
-from .core.app_registry import AppEntry, AppRegistry
+from .core.app_registry import AppEntry, AppRegistry, ToolboxEntry
 from .core.logger import log_error
 from .core.settings import get_uv_executable
 from .core.uv_bridge import UvBridge
@@ -93,28 +93,42 @@ class QGaragePlugin:
         dialog.app_installed.connect(self._on_app_installed)
         dialog.exec()
 
-    def _on_app_installed(self, app_id: str):
-        """Called when an app is successfully installed via the dialog."""
+    def _on_app_installed(self, item_id: str, is_toolbox: bool):
+        """Called when an app or toolbox is successfully installed via the dialog."""
         if self.registry is None or self.dock is None:
             return
 
-        # If the app already exists, unload it and remove its card first
-        if app_id in self.registry.entries:
-            self.registry.remove_app(app_id)
-            self.dock.remove_card(app_id)
+        if is_toolbox:
+            # Handle toolbox installation
+            # If the toolbox already exists, remove it first
+            if item_id in self.registry.toolbox_entries:
+                # Remove all apps in the toolbox first
+                toolbox_entry = self.registry.toolbox_entries[item_id]
+                for app_id in list(toolbox_entry.app_entries.keys()):
+                    self.registry.remove_app(app_id)
 
-        # Read app_meta and register
-        meta_file = APPS_DIR / app_id / "app_meta.json"
-        if not meta_file.exists():
-            return
-        with open(meta_file, encoding="utf-8") as f:
-            app_meta = json.load(f)
-        entry = AppEntry(APPS_DIR / app_id, app_meta)
-        self.registry.register_entry(entry)
-        self.registry.load_app(app_id)
-        self.dock.add_card(entry)
+            # Re-discover to pick up the new/updated toolbox
+            self.registry.discover()
+            self.dock.refresh_cards()
+        else:
+            # Handle single app installation
+            # If the app already exists, unload it and remove its card first
+            if item_id in self.registry.entries:
+                self.registry.remove_app(item_id)
+                self.dock.remove_card(item_id)
+
+            # Read app_meta and register
+            meta_file = APPS_DIR / item_id / "app_meta.json"
+            if not meta_file.exists():
+                return
+            with open(meta_file, encoding="utf-8") as f:
+                app_meta = json.load(f)
+            entry = AppEntry(APPS_DIR / item_id, app_meta)
+            self.registry.register_entry(entry)
+            self.registry.load_app(item_id)
+            self.dock.add_card(entry)
 
     def _on_new_app_requested(self):
         dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
-        dialog.app_created.connect(self._on_app_installed)
+        dialog.app_created.connect(lambda app_id: self._on_app_installed(app_id, False))
         dialog.exec()
