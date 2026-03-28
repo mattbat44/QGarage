@@ -5,7 +5,7 @@ from types import MappingProxyType
 
 from .app_loader import AppLoader
 from .app_state import AppHealth
-from .constants import APP_META_FILENAME, DEFAULT_ENCODING
+from .constants import APP_META_FILENAME, TOOLBOX_META_FILENAME, DEFAULT_ENCODING
 from .logger import log_error, log_info, log_warning
 from .uv_bridge import UvBridge
 
@@ -16,11 +16,12 @@ if TYPE_CHECKING:
 class AppEntry:
     """Container for a single registered app."""
 
-    def __init__(self, app_dir: Path, app_meta: dict):
+    def __init__(self, app_dir: Path, app_meta: dict, parent_toolbox_id: Optional[str] = None):
         self.app_dir = app_dir
         self.app_meta = app_meta
         self.health = AppHealth()
         self.instance: Optional["BaseApp"] = None
+        self.parent_toolbox_id = parent_toolbox_id
 
     @property
     def app_id(self) -> str:
@@ -31,6 +32,24 @@ class AppEntry:
         return self.app_meta.get("name", self.app_id)
 
 
+class ToolboxEntry:
+    """Container for a registered toolbox containing multiple apps."""
+
+    def __init__(self, toolbox_dir: Path, toolbox_meta: dict):
+        self.toolbox_dir = toolbox_dir
+        self.toolbox_meta = toolbox_meta
+        self.app_entries: dict[str, AppEntry] = {}
+        self.is_expanded = False
+
+    @property
+    def toolbox_id(self) -> str:
+        return self.toolbox_meta["id"]
+
+    @property
+    def toolbox_name(self) -> str:
+        return self.toolbox_meta.get("name", self.toolbox_id)
+
+
 class AppRegistry:
     """Discovers, loads, and tracks all installed QGarage apps."""
 
@@ -39,14 +58,20 @@ class AppRegistry:
         self.uv_bridge = uv_bridge
         self.loader = AppLoader(uv_bridge)
         self._entries: dict[str, AppEntry] = {}
+        self._toolbox_entries: dict[str, ToolboxEntry] = {}
 
     @property
     def entries(self) -> MappingProxyType[str, AppEntry]:
         """Return read-only view of entries (no copy)."""
         return MappingProxyType(self._entries)
 
+    @property
+    def toolbox_entries(self) -> MappingProxyType[str, ToolboxEntry]:
+        """Return read-only view of toolbox entries."""
+        return MappingProxyType(self._toolbox_entries)
+
     def discover(self) -> list[AppEntry]:
-        """Scan apps_dir for subdirectories containing app_meta.json."""
+        """Scan apps_dir for subdirectories containing app_meta.json or toolbox_meta.json."""
         discovered: list[AppEntry] = []
         if not self.apps_dir.exists():
             self.apps_dir.mkdir(parents=True, exist_ok=True)
@@ -57,6 +82,13 @@ class AppRegistry:
             if not child.is_dir():
                 continue
 
+            # Check for toolbox first
+            toolbox_meta_file = child / TOOLBOX_META_FILENAME
+            if toolbox_meta_file.exists():
+                discovered.extend(self._discover_toolbox(child, toolbox_meta_file))
+                continue
+
+            # Check for standalone app
             meta_file = child / APP_META_FILENAME
             if not meta_file.exists():
                 continue
@@ -89,6 +121,82 @@ class AppRegistry:
                     f"Error reading {meta_file}: {e}",
                     "app_registry",
                 )
+
+        return discovered
+
+    def _discover_toolbox(self, toolbox_dir: Path, toolbox_meta_file: Path) -> list[AppEntry]:
+        """Discover a toolbox and all its contained apps."""
+        discovered: list[AppEntry] = []
+        try:
+            with open(toolbox_meta_file, encoding=DEFAULT_ENCODING) as f:
+                toolbox_meta = json.load(f)
+
+            toolbox_id = toolbox_meta.get("id")
+            if not toolbox_id:
+                log_warning(
+                    f"Skipping {toolbox_dir}: {TOOLBOX_META_FILENAME} missing 'id'",
+                    "app_registry",
+                )
+                return discovered
+
+            # Create or update toolbox entry
+            if toolbox_id not in self._toolbox_entries:
+                toolbox_entry = ToolboxEntry(toolbox_dir, toolbox_meta)
+                self._toolbox_entries[toolbox_id] = toolbox_entry
+                log_info(f"Discovered toolbox: {toolbox_id}", "app_registry")
+            else:
+                toolbox_entry = self._toolbox_entries[toolbox_id]
+
+            # Discover apps within the toolbox
+            for child in toolbox_dir.iterdir():
+                if not child.is_dir():
+                    continue
+
+                app_meta_file = child / APP_META_FILENAME
+                if not app_meta_file.exists():
+                    continue
+
+                try:
+                    with open(app_meta_file, encoding=DEFAULT_ENCODING) as f:
+                        app_meta = json.load(f)
+
+                    app_id = app_meta.get("id")
+                    if not app_id:
+                        log_warning(
+                            f"Skipping {child}: {APP_META_FILENAME} missing 'id'",
+                            "app_registry",
+                        )
+                        continue
+
+                    # Create app entry with toolbox reference
+                    if app_id not in self._entries:
+                        entry = AppEntry(child, app_meta, parent_toolbox_id=toolbox_id)
+                        self._entries[app_id] = entry
+                        toolbox_entry.app_entries[app_id] = entry
+                        discovered.append(entry)
+                        log_info(f"Discovered app: {app_id} (in toolbox: {toolbox_id})", "app_registry")
+
+                except json.JSONDecodeError as e:
+                    log_error(
+                        f"Invalid JSON in {app_meta_file}: {e}",
+                        "app_registry",
+                    )
+                except (OSError, IOError) as e:
+                    log_error(
+                        f"Error reading {app_meta_file}: {e}",
+                        "app_registry",
+                    )
+
+        except json.JSONDecodeError as e:
+            log_error(
+                f"Invalid JSON in {toolbox_meta_file}: {e}",
+                "app_registry",
+            )
+        except (OSError, IOError) as e:
+            log_error(
+                f"Error reading {toolbox_meta_file}: {e}",
+                "app_registry",
+            )
 
         return discovered
 
