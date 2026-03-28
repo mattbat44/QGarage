@@ -1,14 +1,11 @@
-from pathlib import Path
-from typing import Optional
-
-from qgis.PyQt.QtCore import Qt, pyqtSignal
+from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QSizePolicy,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
@@ -51,10 +48,10 @@ class ToolboxCardWidget(QFrame):
         self._main_layout.setSpacing(0)
 
         # Header area (toolbox info + expand/collapse button)
-        header_frame = QFrame()
-        header_frame.setObjectName("toolboxHeader")
-        header_frame.setCursor(Qt.CursorShape.PointingHandCursor)
-        header_layout = QHBoxLayout(header_frame)
+        self._header_frame = QFrame()
+        self._header_frame.setObjectName("toolboxHeader")
+        self._header_frame.setCursor(Qt.CursorShape.PointingHandCursor)
+        header_layout = QHBoxLayout(self._header_frame)
         header_layout.setContentsMargins(12, 10, 12, 10)
         header_layout.setSpacing(10)
 
@@ -78,7 +75,6 @@ class ToolboxCardWidget(QFrame):
         app_count = len(self.toolbox_entry.app_entries)
         self._count_badge = QLabel(f"{app_count} app" + ("s" if app_count != 1 else ""))
         self._count_badge.setObjectName("toolboxCountBadge")
-        self._count_badge.setStyleSheet("background-color: #2196F3; color: white; padding: 2px 6px; border-radius: 3px;")
         title_row.addWidget(self._count_badge)
 
         title_row.addStretch()
@@ -95,13 +91,16 @@ class ToolboxCardWidget(QFrame):
         header_layout.addLayout(text_layout, stretch=1)
 
         # Expand/collapse button
-        self._expand_button = QPushButton("▼")
+        self._expand_button = QToolButton()
         self._expand_button.setObjectName("toolboxExpandButton")
         self._expand_button.setFixedSize(32, 32)
+        self._expand_button.setAutoRaise(True)
+        self._expand_button.setArrowType(Qt.ArrowType.RightArrow)
+        self._expand_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self._expand_button.clicked.connect(self._toggle_expanded)
         header_layout.addWidget(self._expand_button)
 
-        self._main_layout.addWidget(header_frame)
+        self._main_layout.addWidget(self._header_frame)
 
         # Container for app cards (initially hidden)
         self._apps_container = QWidget()
@@ -110,6 +109,12 @@ class ToolboxCardWidget(QFrame):
         self._apps_layout.setContentsMargins(12, 0, 12, 8)
         self._apps_layout.setSpacing(8)
         self._apps_container.setVisible(False)
+        self._apps_container.setMaximumHeight(0)
+
+        self._apps_animation = QPropertyAnimation(self._apps_container, b"maximumHeight", self)
+        self._apps_animation.setDuration(180)
+        self._apps_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
+        self._apps_animation.finished.connect(self._on_apps_animation_finished)
 
         # Add app cards
         for app_id, app_entry in self.toolbox_entry.app_entries.items():
@@ -124,7 +129,8 @@ class ToolboxCardWidget(QFrame):
         self._main_layout.addWidget(self._apps_container)
 
         # Connect header click to toggle
-        header_frame.mousePressEvent = lambda event: self._toggle_expanded()
+        self._header_frame.mouseReleaseEvent = self._on_header_clicked
+        self._set_expanded(self.toolbox_entry.is_expanded, animate=False)
 
     def _build_icon(self) -> QLabel:
         """Build the icon widget from toolbox_meta icon_path, or a coloured fallback."""
@@ -155,9 +161,64 @@ class ToolboxCardWidget(QFrame):
 
     def _toggle_expanded(self):
         """Toggle the expanded/collapsed state of the toolbox."""
-        self.toolbox_entry.is_expanded = not self.toolbox_entry.is_expanded
-        self._apps_container.setVisible(self.toolbox_entry.is_expanded)
-        self._expand_button.setText("▲" if self.toolbox_entry.is_expanded else "▼")
+        self._set_expanded(not self.toolbox_entry.is_expanded)
+
+    def _set_expanded(self, expanded: bool, animate: bool = True):
+        """Apply expanded state and animate the app list height."""
+        self.toolbox_entry.is_expanded = expanded
+        self._expand_button.setArrowType(
+            Qt.ArrowType.DownArrow if expanded else Qt.ArrowType.RightArrow
+        )
+        self._header_frame.setProperty("expanded", expanded)
+        self.setProperty("expanded", expanded)
+        self.style().unpolish(self)
+        self.style().polish(self)
+        self._header_frame.style().unpolish(self._header_frame)
+        self._header_frame.style().polish(self._header_frame)
+
+        target_height = self._apps_container.sizeHint().height()
+        current_height = self._apps_container.height() or self._apps_container.maximumHeight()
+        self._apps_animation.stop()
+
+        if not animate:
+            self._apps_container.setVisible(expanded)
+            self._apps_container.setMaximumHeight(target_height if expanded else 0)
+            if expanded:
+                self._apps_container.setMaximumHeight(16777215)
+            return
+
+        if expanded:
+            self._apps_container.setVisible(True)
+            start_height = max(0, current_height)
+            self._apps_container.setMaximumHeight(start_height)
+            self._apps_animation.setStartValue(start_height)
+            self._apps_animation.setEndValue(target_height)
+            self._apps_animation.start()
+            return
+
+        start_height = current_height or target_height
+        self._apps_container.setMaximumHeight(start_height)
+        self._apps_animation.setStartValue(start_height)
+        self._apps_animation.setEndValue(0)
+        self._apps_animation.start()
+
+    def _on_apps_animation_finished(self):
+        """Release height constraints after expansion and hide when collapsed."""
+        if self.toolbox_entry.is_expanded:
+            self._apps_container.setMaximumHeight(16777215)
+            return
+
+        self._apps_container.setVisible(False)
+
+    def _on_header_clicked(self, event):
+        """Toggle expansion when the header background is clicked."""
+        if event.button() == Qt.MouseButton.LeftButton:
+            click_pos = event.pos() if hasattr(event, "pos") else event.position().toPoint()
+            if not self._expand_button.geometry().contains(click_pos):
+                self._toggle_expanded()
+                event.accept()
+                return
+        QFrame.mouseReleaseEvent(self._header_frame, event)
 
     def update_app_state(self, app_id: str):
         """Refresh a contained app card's badge."""
