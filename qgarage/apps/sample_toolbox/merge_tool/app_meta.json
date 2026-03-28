@@ -1,0 +1,13 @@
+{
+  "name": "Merge Tool",
+  "id": "merge_tool",
+  "version": "1.0.0",
+  "author": "QGarage Team",
+  "description": "Merges multiple vector layers into one.",
+  "entry_point": "main.py",
+  "class_name": "MergeToolApp",
+  "tags": [
+    "vector",
+    "geoprocessing"
+  ]
+}

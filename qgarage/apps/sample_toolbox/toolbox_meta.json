@@ -1,0 +1,12 @@
+{
+  "name": "Sample Toolbox",
+  "id": "sample_toolbox",
+  "version": "1.0.0",
+  "author": "QGarage Team",
+  "description": "A sample toolbox containing multiple related apps for demonstration purposes.",
+  "tags": [
+    "sample",
+    "demo",
+    "toolbox"
+  ]
+}

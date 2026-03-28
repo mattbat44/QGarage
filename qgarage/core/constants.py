@@ -2,6 +2,7 @@
 
 # File names
 APP_META_FILENAME = "app_meta.json"
+TOOLBOX_META_FILENAME = "toolbox_meta.json"
 REQUIREMENTS_FILENAME = "requirements.txt"
 VENV_DIR = ".venv"
 DEFAULT_ENTRY_POINT = "main.py"
