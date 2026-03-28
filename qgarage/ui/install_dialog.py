@@ -20,20 +20,20 @@ logger = logging.getLogger("qgarage.install_dialog")
 
 
 class InstallDialog(QDialog):
-    """Dialog for installing an app from a ZIP URL or local folder.
+    """Dialog for installing an app or toolbox from a ZIP URL or local folder.
 
     Signals:
-        app_installed(str): Emitted with app_id on successful install.
+        app_installed(str, bool): Emitted with (id, is_toolbox) on successful install.
     """
 
-    app_installed = pyqtSignal(str)
+    app_installed = pyqtSignal(str, bool)
 
     def __init__(self, apps_dir: Path, parent=None):
         super().__init__(parent)
         self._apps_dir = apps_dir
         self._worker: Optional[DownloadAndInstallWorker | LocalInstallWorker] = None
 
-        self.setWindowTitle("Install App")
+        self.setWindowTitle("Install App or Toolbox")
         self.setMinimumWidth(450)
         self._build_ui()
 
@@ -42,7 +42,7 @@ class InstallDialog(QDialog):
         layout.setSpacing(10)
 
         # URL input
-        layout.addWidget(QLabel("Enter a URL to a .zip file:"))
+        layout.addWidget(QLabel("Enter a URL to a .zip file (app or toolbox):"))
         url_row = QHBoxLayout()
         self._url_input = QLineEdit()
         self._url_input.setPlaceholderText("https://github.com/.../app.zip")
@@ -143,11 +143,12 @@ class InstallDialog(QDialog):
         self._progress_bar.setValue(pct)
         self._status_label.setText(message)
 
-    def _on_finished(self, success: bool, result: str):
+    def _on_finished(self, success: bool, result: str, is_toolbox: bool):
         self._set_installing(False)
         self._worker = None
         if success:
-            self._status_label.setText(f"Successfully installed '{result}'")
-            self.app_installed.emit(result)
+            item_type = "toolbox" if is_toolbox else "app"
+            self._status_label.setText(f"Successfully installed {item_type} '{result}'")
+            self.app_installed.emit(result, is_toolbox)
         else:
             self._status_label.setText(f"Failed: {result}")

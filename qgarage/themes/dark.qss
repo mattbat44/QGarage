@@ -58,6 +58,59 @@
     background-color: #33334d;
 }
 
+/* Toolbox cards */
+.ToolboxCardWidget {
+    background-color: #262638;
+    border: 1px solid #3d3d5c;
+    border-radius: 10px;
+}
+.ToolboxCardWidget[expanded="true"] {
+    border-color: #4e6c93;
+}
+#toolboxHeader {
+    background-color: transparent;
+    border-radius: 10px;
+}
+#toolboxHeader:hover {
+    background-color: rgba(255, 255, 255, 0.04);
+}
+#toolboxCardTitle {
+    color: #f1f3f7;
+    font-size: 13px;
+    font-weight: bold;
+}
+#toolboxCardDescription {
+    color: #aab0bf;
+    font-size: 11px;
+}
+#toolboxCountBadge {
+    background-color: #355d85;
+    color: #eef5ff;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: bold;
+}
+QToolButton#toolboxExpandButton {
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid #4a4a68;
+    border-radius: 16px;
+    padding: 0;
+}
+QToolButton#toolboxExpandButton:hover {
+    background-color: rgba(255, 255, 255, 0.12);
+    border-color: #5d7ca0;
+}
+QToolButton#toolboxExpandButton:pressed {
+    background-color: rgba(255, 255, 255, 0.18);
+}
+#toolboxAppsContainer {
+    background-color: rgba(0, 0, 0, 0.10);
+    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
 /* Card title */
 #appCardTitle {
     color: #e0e0e0;

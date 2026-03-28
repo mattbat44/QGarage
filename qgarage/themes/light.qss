@@ -58,6 +58,59 @@
     background-color: #fafffe;
 }
 
+/* Toolbox cards */
+.ToolboxCardWidget {
+    background-color: #ffffff;
+    border: 1px solid #dddfe6;
+    border-radius: 10px;
+}
+.ToolboxCardWidget[expanded="true"] {
+    border-color: #8eaaca;
+}
+#toolboxHeader {
+    background-color: transparent;
+    border-radius: 10px;
+}
+#toolboxHeader:hover {
+    background-color: #f4f7fb;
+}
+#toolboxCardTitle {
+    color: #222222;
+    font-size: 13px;
+    font-weight: bold;
+}
+#toolboxCardDescription {
+    color: #666666;
+    font-size: 11px;
+}
+#toolboxCountBadge {
+    background-color: #dceaf8;
+    color: #284a6b;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: bold;
+}
+QToolButton#toolboxExpandButton {
+    background-color: #f2f4f7;
+    border: 1px solid #d6dbe4;
+    border-radius: 16px;
+    padding: 0;
+}
+QToolButton#toolboxExpandButton:hover {
+    background-color: #eaf1f8;
+    border-color: #a7bdd5;
+}
+QToolButton#toolboxExpandButton:pressed {
+    background-color: #dde8f2;
+}
+#toolboxAppsContainer {
+    background-color: #f8fafc;
+    border-top: 1px solid #e5eaf0;
+    border-bottom-left-radius: 10px;
+    border-bottom-right-radius: 10px;
+}
+
 /* Card title */
 #appCardTitle {
     color: #222222;

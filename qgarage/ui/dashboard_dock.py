@@ -18,6 +18,7 @@ from ..core.app_registry import AppEntry, AppRegistry
 from ..themes.theme_manager import ThemeManager
 from .app_card_widget import AppCardWidget
 from .app_host_widget import AppHostWidget
+from .toolbox_card_widget import ToolboxCardWidget
 
 logger = logging.getLogger("qgarage.dashboard")
 
@@ -40,6 +41,7 @@ class DashboardDock(QgsDockWidget):
         self.setObjectName("qgarageDashboard")
         self._registry: Optional[AppRegistry] = None
         self._cards: dict[str, AppCardWidget] = {}
+        self._toolbox_cards: dict[str, ToolboxCardWidget] = {}
 
         self._build_ui()
         ThemeManager.apply_to_widget(self)
@@ -135,10 +137,31 @@ class DashboardDock(QgsDockWidget):
             card.deleteLater()
         self._cards.clear()
 
+        for toolbox_card in self._toolbox_cards.values():
+            self.card_layout.removeWidget(toolbox_card)
+            toolbox_card.deleteLater()
+        self._toolbox_cards.clear()
+
+        # Add toolboxes first
+        toolbox_entries = self._registry.toolbox_entries
+        for toolbox_id, toolbox_entry in toolbox_entries.items():
+            toolbox_card = ToolboxCardWidget(toolbox_entry)
+            toolbox_card.app_run_clicked.connect(self._on_app_run)
+            toolbox_card.app_reset_clicked.connect(self._on_app_reset)
+            self._toolbox_cards[toolbox_id] = toolbox_card
+            # Insert before the stretch
+            self.card_layout.insertWidget(self.card_layout.count() - 1, toolbox_card)
+
+        # Add standalone apps (those not in toolboxes)
         entries = self._registry.entries
-        self._empty_label.setVisible(len(entries) == 0)
+        total_count = len(toolbox_entries) + sum(1 for e in entries.values() if e.parent_toolbox_id is None)
+        self._empty_label.setVisible(total_count == 0)
 
         for app_id, entry in entries.items():
+            # Skip apps that are in toolboxes (they're displayed inside toolbox cards)
+            if entry.parent_toolbox_id is not None:
+                continue
+
             card = AppCardWidget(
                 app_id, entry.app_meta, entry.health, app_dir=entry.app_dir
             )
@@ -173,6 +196,15 @@ class DashboardDock(QgsDockWidget):
         card = self._cards.get(app_id)
         if card:
             card.update_state()
+            return
+
+        # Check if the app is in a toolbox
+        if self._registry:
+            entry = self._registry.entries.get(app_id)
+            if entry and entry.parent_toolbox_id:
+                toolbox_card = self._toolbox_cards.get(entry.parent_toolbox_id)
+                if toolbox_card:
+                    toolbox_card.update_app_state(app_id)
 
     # --- Navigation ---
 
@@ -213,12 +245,41 @@ class DashboardDock(QgsDockWidget):
 
     def _filter_cards(self, text: str):
         text_lower = text.lower()
+
+        # Filter standalone app cards
         for app_id, card in self._cards.items():
             name = card._app_meta.get("name", "").lower()
             desc = card._app_meta.get("description", "").lower()
             tags = " ".join(card._app_meta.get("tags", [])).lower()
             visible = text_lower in name or text_lower in desc or text_lower in tags
             card.setVisible(visible)
+
+        # Filter toolbox cards
+        for toolbox_id, toolbox_card in self._toolbox_cards.items():
+            toolbox_meta = toolbox_card.toolbox_entry.toolbox_meta
+            toolbox_name = toolbox_meta.get("name", "").lower()
+            toolbox_desc = toolbox_meta.get("description", "").lower()
+            toolbox_tags = " ".join(toolbox_meta.get("tags", [])).lower()
+
+            # Check if toolbox itself matches
+            toolbox_matches = (
+                text_lower in toolbox_name
+                or text_lower in toolbox_desc
+                or text_lower in toolbox_tags
+            )
+
+            # Check if any app in the toolbox matches
+            any_app_matches = False
+            for app_entry in toolbox_card.toolbox_entry.app_entries.values():
+                app_name = app_entry.app_meta.get("name", "").lower()
+                app_desc = app_entry.app_meta.get("description", "").lower()
+                app_tags = " ".join(app_entry.app_meta.get("tags", [])).lower()
+                if text_lower in app_name or text_lower in app_desc or text_lower in app_tags:
+                    any_app_matches = True
+                    break
+
+            # Show toolbox if either toolbox or any of its apps matches
+            toolbox_card.setVisible(toolbox_matches or any_app_matches)
 
     def showEvent(self, event):
         super().showEvent(event)
