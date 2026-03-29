@@ -123,6 +123,70 @@ Registers a declarative input. The framework auto-generates the Qt widget.
 - `file_filter` — For `FILE_PATH`: e.g. `"GeoTIFF (*.tif);;All Files (*.*)"`.
 - `group` — Group label string. Inputs with the same group are placed in a `QGroupBox`.
 
+### `add_output(key, label, output_type, **kwargs)`
+
+**Optional.** Registers a declarative output for the Processing framework.
+
+When apps are exposed as Processing algorithms, output specs tell the framework what keys to expect in the `execute_logic()` result dict and how to expose them as algorithm outputs. This enables:
+
+- **Model Builder integration** — outputs can be connected to other algorithm inputs
+- **Batch processing** — outputs are automatically collected and displayed
+- **Scripting** — outputs are returned in a typed, predictable way
+
+**Available OutputTypes:**
+
+| OutputType      | Processing Output Class           | Expected value in result dict |
+| --------------- | --------------------------------- | ----------------------------- |
+| `STRING`        | `QgsProcessingOutputString`       | `str`                         |
+| `INTEGER`       | `QgsProcessingOutputNumber`       | `int`                         |
+| `FLOAT`         | `QgsProcessingOutputNumber`       | `float`                       |
+| `BOOLEAN`       | `QgsProcessingOutputBoolean`      | `bool`                        |
+| `FILE`          | `QgsProcessingOutputFile`         | `str` (file path)             |
+| `FOLDER`        | `QgsProcessingOutputFolder`       | `str` (folder path)           |
+| `VECTOR_LAYER`  | `QgsProcessingOutputVectorLayer`  | `str` (layer path or ID)      |
+| `RASTER_LAYER`  | `QgsProcessingOutputRasterLayer`  | `str` (layer path or ID)      |
+| `ANY_LAYER`     | `QgsProcessingOutputMapLayer`     | `str` (layer path or ID)      |
+
+**Common `add_output` kwargs:**
+
+- `description` — Optional help text shown in the Processing UI. Defaults to the label.
+
+**Example:**
+
+```python
+from qgarage.core.base_app import BaseApp, InputType, OutputType
+
+
+class MyAnalysisApp(BaseApp):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self.add_input("input_layer", "Input Layer", InputType.VECTOR_LAYER)
+        self.add_output("feature_count", "Feature Count", OutputType.INTEGER)
+        self.add_output("output_file", "Output File", OutputType.FILE,
+                       description="Path to the analysis result CSV")
+
+    def execute_logic(self, inputs):
+        layer = inputs["input_layer"]
+        count = layer.featureCount()
+
+        # ... analysis logic ...
+        output_path = "/path/to/result.csv"
+
+        return {
+            "status": "success",
+            "message": f"Analyzed {count} features",
+            "feature_count": count,
+            "output_file": output_path
+        }
+```
+
+**Important notes:**
+
+- **Output specs are optional.** Apps without `add_output()` calls work exactly as before.
+- **Backward compatibility is preserved.** The framework always returns `STATUS` and `MESSAGE` outputs even if not declared.
+- **Only declared outputs are exposed.** Keys in the result dict that don't have matching `add_output()` calls are not exposed to Processing (but are still available in `on_finalize()`).
+- **Dynamic mode apps are not affected.** Output specs only apply to declarative apps exposed through Processing.
+
 ### `execute_logic(self, inputs) -> dict`
 
 **This is the only method you must implement.** It contains your business logic.
