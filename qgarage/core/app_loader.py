@@ -66,7 +66,7 @@ class AppLoader:
                 if not issubclass(app_class, BaseApp):
                     raise TypeError(f"'{class_name}' does not inherit from BaseApp")
 
-                instance = app_class(app_meta=app_meta, app_dir=app_dir)
+                instance = app_class(app_meta=app_meta, app_dir=app_dir, health=health)
                 self._loaded_modules[app_id] = module
 
             health.record_success()

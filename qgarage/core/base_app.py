@@ -64,6 +64,24 @@ class InputType(Enum):
     TEXT_AREA = auto()
 
 
+class OutputType(Enum):
+    """Supported declarative output types for BaseApp.
+
+    These match InputType values for consistency, allowing the same
+    type to be used for both inputs and outputs in Processing algorithms.
+    """
+
+    STRING = auto()
+    INTEGER = auto()
+    FLOAT = auto()
+    BOOLEAN = auto()
+    FILE = auto()
+    FOLDER = auto()
+    VECTOR_LAYER = auto()
+    RASTER_LAYER = auto()
+    ANY_LAYER = auto()
+
+
 @dataclass
 class InputSpec:
     """Specification for a single UI input."""
@@ -80,6 +98,27 @@ class InputSpec:
     linked_layer_key: str = ""
     file_filter: str = "All Files (*.*)"
     group: str = ""
+
+
+@dataclass
+class OutputSpec:
+    """Specification for a single output.
+
+    Outputs are declarative hints that tell the Processing framework
+    what keys to expect in the execute_logic() result dict and how
+    to expose them as algorithm outputs.
+
+    Example::
+
+        self.add_output("result_count", "Feature Count", OutputType.INTEGER)
+        # ...then in execute_logic():
+        return {"status": "success", "result_count": 42}
+    """
+
+    key: str
+    label: str
+    output_type: OutputType
+    description: str = ""
 
 
 class _LayerBridge(QObject):
@@ -112,12 +151,14 @@ class BaseApp(ABC):
                 return {"status": "success", "message": "Done"}
     """
 
-    def __init__(self, app_meta: dict, app_dir: Path):
+    def __init__(self, app_meta: dict, app_dir: Path, health: "AppHealth" = None):
         self.app_meta = app_meta
         self.app_dir = app_dir
         self.app_id: str = app_meta["id"]
         self.app_name: str = app_meta["name"]
+        self._health = health  # Optional reference to track execution state
         self._input_specs: list[InputSpec] = []
+        self._output_specs: list[OutputSpec] = []
         self._widget: Optional[QWidget] = None
         self._input_widgets: dict[str, QWidget] = {}
         self._output_area: Optional[QTextEdit] = None
@@ -143,6 +184,45 @@ class BaseApp(ABC):
         """Register a declarative input. Call this in __init__."""
         spec = InputSpec(key=key, label=label, input_type=input_type, **kwargs)
         self._input_specs.append(spec)
+
+    def add_output(
+        self,
+        key: str,
+        label: str,
+        output_type: OutputType,
+        **kwargs,
+    ) -> None:
+        """Register a declarative output for the Processing framework.
+
+        Call this in __init__ to declare what keys your execute_logic()
+        will return. The Processing framework will expose these as algorithm
+        outputs, making them available in Model Builder and other tools.
+
+        Args:
+            key: The dict key that execute_logic() will return.
+            label: Human-readable output name shown in the Processing UI.
+            output_type: The OutputType enum value.
+            **kwargs: Optional description="" for output documentation.
+
+        Example::
+
+            def __init__(self, **kwargs):
+                super().__init__(**kwargs)
+                self.add_input("input_layer", "Input", InputType.VECTOR_LAYER)
+                self.add_output("feature_count", "Feature Count", OutputType.INTEGER)
+                self.add_output("output_file", "Output File", OutputType.FILE,
+                               description="Path to the generated output file")
+
+            def execute_logic(self, inputs):
+                count = inputs["input_layer"].featureCount()
+                return {
+                    "status": "success",
+                    "feature_count": count,
+                    "output_file": "/path/to/output.geojson"
+                }
+        """
+        spec = OutputSpec(key=key, label=label, output_type=output_type, **kwargs)
+        self._output_specs.append(spec)
 
     # --- Abstract method ---
 
@@ -596,6 +676,11 @@ class BaseApp(ABC):
         self._progress_bar.setRange(0, 0)  # indeterminate
         self._output_area.append("Launching in isolated process…")
 
+        # Set state to RUNNING when execution starts
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.RUNNING
+
         try:
             self._launch_isolated(inputs)
         except Exception as exc:
@@ -605,6 +690,10 @@ class BaseApp(ABC):
             )
             self._run_button.setEnabled(True)
             self._progress_bar.setVisible(False)
+            # Reset state on failure
+            if self._health:
+                from .app_state import AppState
+                self._health.state = AppState.READY
 
     def _launch_isolated(self, inputs: dict) -> None:
         """Serialise inputs, write runner+config, spawn uv run --isolated."""
@@ -648,6 +737,11 @@ class BaseApp(ABC):
         self.on_finalize(result)
         self._run_button.setEnabled(True)
         self._progress_bar.setVisible(False)
+
+        # Reset state to READY when execution completes
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.READY
         # tmp_dir cleanup happens when TemporaryDirectory is GC'd
 
     def _on_subprocess_error(self, msg: str) -> None:
@@ -656,6 +750,11 @@ class BaseApp(ABC):
         logger.error("App '%s' subprocess error: %s", self.app_id, msg)
         self._run_button.setEnabled(True)
         self._progress_bar.setVisible(False)
+
+        # Reset state to READY on error
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.READY
 
     def on_finalize(self, result: dict) -> None:
         """Optional hook called on the main thread after subprocess completes.

@@ -22,6 +22,113 @@ import pytest
 def _install_qgis_mock():
     """Install a recursive MagicMock for every qgis.* path used by qgarage."""
 
+    class _DummyProcessingParameter:
+        def __init__(self, name, description="", **kwargs):
+            self.name = name
+            self.description = description
+            self.kwargs = kwargs
+
+    class _DummyProcessingParameterNumber(_DummyProcessingParameter):
+        Integer = 0
+        Double = 1
+
+    class _DummyProcessingParameterFile(_DummyProcessingParameter):
+        File = 0
+        Folder = 1
+
+    class _DummyProcessingParameterField(_DummyProcessingParameter):
+        Any = 0
+
+    class _DummyProcessingAlgorithm:
+        def __init__(self):
+            self._parameters = []
+
+        def addParameter(self, parameter):
+            self._parameters.append(parameter)
+
+        def parameterDefinitions(self):
+            return list(self._parameters)
+
+        def parameterAsString(self, parameters, name, context):
+            return parameters.get(name)
+
+        def parameterAsInt(self, parameters, name, context):
+            value = parameters.get(name)
+            return None if value is None else int(value)
+
+        def parameterAsDouble(self, parameters, name, context):
+            value = parameters.get(name)
+            return None if value is None else float(value)
+
+        def parameterAsBool(self, parameters, name, context):
+            return bool(parameters.get(name))
+
+        def parameterAsEnum(self, parameters, name, context):
+            value = parameters.get(name)
+            return 0 if value is None else int(value)
+
+        def parameterAsVectorLayer(self, parameters, name, context):
+            return parameters.get(name)
+
+        def parameterAsRasterLayer(self, parameters, name, context):
+            return parameters.get(name)
+
+        def parameterAsLayer(self, parameters, name, context):
+            return parameters.get(name)
+
+        def parameterAsCrs(self, parameters, name, context):
+            return parameters.get(name)
+
+    class _DummyProcessingProvider:
+        def __init__(self):
+            self._algorithms = []
+
+        def addAlgorithm(self, algorithm):
+            if hasattr(algorithm, "initAlgorithm"):
+                algorithm.initAlgorithm({})
+            self._algorithms.append(algorithm)
+
+        def algorithms(self):
+            return list(self._algorithms)
+
+        def refreshAlgorithms(self):
+            self._algorithms = []
+            self.loadAlgorithms()
+
+    class _DummyProcessingRegistry:
+        def __init__(self):
+            self.providers = []
+
+        def addProvider(self, provider):
+            self.providers.append(provider)
+            return True
+
+        def removeProvider(self, provider):
+            if provider in self.providers:
+                self.providers.remove(provider)
+            return True
+
+    class _DummyQgsApplication:
+        _registry = _DummyProcessingRegistry()
+
+        @staticmethod
+        def processingRegistry():
+            return _DummyQgsApplication._registry
+
+    class _DummyProcessingContext:
+        pass
+
+    class _DummyProcessingFeedback:
+        def __init__(self):
+            self.info_messages = []
+            self.error_messages = []
+
+        def pushInfo(self, message):
+            self.info_messages.append(message)
+
+        def reportError(self, message, fatalError=False):
+            self.error_messages.append((message, fatalError))
+
     if "qgis" in sys.modules and not isinstance(sys.modules["qgis"], MagicMock):
         return  # running inside real QGIS — nothing to do
 
@@ -50,6 +157,24 @@ def _install_qgis_mock():
     core_mock.Qgis.MessageLevel.Info = 0
     core_mock.Qgis.MessageLevel.Warning = 1
     core_mock.Qgis.MessageLevel.Critical = 2
+    core_mock.QgsProcessingAlgorithm = _DummyProcessingAlgorithm
+    core_mock.QgsProcessingProvider = _DummyProcessingProvider
+    core_mock.QgsProcessingException = type(
+        "QgsProcessingException", (Exception,), {}
+    )
+    core_mock.QgsProcessingParameterString = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterNumber = _DummyProcessingParameterNumber
+    core_mock.QgsProcessingParameterBoolean = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterEnum = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterFile = _DummyProcessingParameterFile
+    core_mock.QgsProcessingParameterVectorLayer = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterRasterLayer = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterMapLayer = _DummyProcessingParameter
+    core_mock.QgsProcessingParameterField = _DummyProcessingParameterField
+    core_mock.QgsProcessingParameterCrs = _DummyProcessingParameter
+    core_mock.QgsProcessingContext = _DummyProcessingContext
+    core_mock.QgsProcessingFeedback = _DummyProcessingFeedback
+    core_mock.QgsApplication = _DummyQgsApplication
 
     # QgsMapLayerProxyModel needs a Filter attribute
     core_mock.QgsMapLayerProxyModel.Filter.VectorLayer = 1

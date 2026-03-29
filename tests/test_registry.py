@@ -1,6 +1,7 @@
 """Tests for AppRegistry discovery and app_meta.json validation."""
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -99,3 +100,44 @@ class TestRegistryDiscover:
         found = registry.discover()
         assert len(found) == 1
         assert found[0].app_id == "dup"
+
+    def test_toolbox_rediscovery_removes_stale_members(self, tmp_apps_dir):
+        from unittest.mock import MagicMock
+
+        from qgarage.core.app_registry import AppRegistry
+
+        toolbox_dir = tmp_apps_dir / "sample_toolbox"
+        toolbox_dir.mkdir()
+        (toolbox_dir / "toolbox_meta.json").write_text(
+            json.dumps({"id": "sample_toolbox", "name": "Sample Toolbox"}),
+            encoding="utf-8",
+        )
+
+        buffer_dir = toolbox_dir / "buffer_tool"
+        buffer_dir.mkdir()
+        (buffer_dir / "app_meta.json").write_text(
+            json.dumps({"id": "buffer_tool", "name": "Buffer Tool"}),
+            encoding="utf-8",
+        )
+
+        merge_dir = toolbox_dir / "merge_tool"
+        merge_dir.mkdir()
+        (merge_dir / "app_meta.json").write_text(
+            json.dumps({"id": "merge_tool", "name": "Merge Tool"}),
+            encoding="utf-8",
+        )
+
+        registry = AppRegistry(tmp_apps_dir, MagicMock())
+        registry.discover()
+        assert set(registry.toolbox_entries["sample_toolbox"].app_entries) == {
+            "buffer_tool",
+            "merge_tool",
+        }
+
+        shutil.rmtree(merge_dir)
+        registry.remove_app("merge_tool")
+        registry.discover()
+
+        assert set(registry.toolbox_entries["sample_toolbox"].app_entries) == {
+            "buffer_tool"
+        }

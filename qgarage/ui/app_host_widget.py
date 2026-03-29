@@ -55,6 +55,10 @@ class AppHostWidget(QWidget):
         widget = app.build_widget()
         self._scroll.setWidget(widget)
 
+    def has_app(self) -> bool:
+        """Check if an app widget is currently loaded."""
+        return self._current_app is not None
+
     def clear(self) -> None:
         """Remove the current app's widget."""
         if self._current_app is not None:
