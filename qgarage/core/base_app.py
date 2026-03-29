@@ -113,11 +113,12 @@ class BaseApp(ABC):
                 return {"status": "success", "message": "Done"}
     """
 
-    def __init__(self, app_meta: dict, app_dir: Path):
+    def __init__(self, app_meta: dict, app_dir: Path, health: "AppHealth" = None):
         self.app_meta = app_meta
         self.app_dir = app_dir
         self.app_id: str = app_meta["id"]
         self.app_name: str = app_meta["name"]
+        self._health = health  # Optional reference to track execution state
         self._input_specs: list[InputSpec] = []
         self._widget: Optional[QWidget] = None
         self._input_widgets: dict[str, QWidget] = {}
@@ -597,6 +598,11 @@ class BaseApp(ABC):
         self._progress_bar.setRange(0, 0)  # indeterminate
         self._output_area.append("Launching in isolated process…")
 
+        # Set state to RUNNING when execution starts
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.RUNNING
+
         try:
             self._launch_isolated(inputs)
         except Exception as exc:
@@ -606,6 +612,10 @@ class BaseApp(ABC):
             )
             self._run_button.setEnabled(True)
             self._progress_bar.setVisible(False)
+            # Reset state on failure
+            if self._health:
+                from .app_state import AppState
+                self._health.state = AppState.READY
 
     def _launch_isolated(self, inputs: dict) -> None:
         """Serialise inputs, write runner+config, spawn uv run --isolated."""
@@ -648,6 +658,11 @@ class BaseApp(ABC):
         self.on_finalize(result)
         self._run_button.setEnabled(True)
         self._progress_bar.setVisible(False)
+
+        # Reset state to READY when execution completes
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.READY
         # tmp_dir cleanup happens when TemporaryDirectory is GC'd
 
     def _on_subprocess_error(self, msg: str) -> None:
@@ -656,6 +671,11 @@ class BaseApp(ABC):
         logger.error("App '%s' subprocess error: %s", self.app_id, msg)
         self._run_button.setEnabled(True)
         self._progress_bar.setVisible(False)
+
+        # Reset state to READY on error
+        if self._health:
+            from .app_state import AppState
+            self._health.state = AppState.READY
 
     def on_finalize(self, result: dict) -> None:
         """Optional hook called on the main thread after subprocess completes.
