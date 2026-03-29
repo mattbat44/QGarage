@@ -212,9 +212,6 @@ class DashboardDock(QgsDockWidget):
     def _show_cards(self):
         """Return to the cards view without clearing the running app."""
         # Don't clear the app - just hide it to preserve state
-        # Update the card state to show it's still running
-        if self._current_app_id:
-            self.update_card_state(self._current_app_id)
         self._toolbar.setVisible(True)
         self._stack.setCurrentIndex(0)
 
@@ -226,39 +223,29 @@ class DashboardDock(QgsDockWidget):
         if entry is None or entry.instance is None:
             return
 
-        # Check if this app is already running with a widget
+        # Check if this app is already open with a widget
         if app_id == self._current_app_id and self._app_host.has_app():
-            # App is already running, just switch to it
+            # App UI is already open, just switch to it
             self._toolbar.setVisible(False)
             self._stack.setCurrentIndex(1)
             return
 
-        # If switching to a different app, clear the previous one and reset its state
+        # If switching to a different app, clear the previous one
         if self._current_app_id and self._current_app_id != app_id:
-            old_entry = self._registry.entries.get(self._current_app_id)
-            if old_entry:
-                from ..core.app_state import AppState
-                old_entry.health.state = AppState.READY
-                self.update_card_state(self._current_app_id)
             self._app_host.clear()
 
-        # Set state to RUNNING before showing
-        from ..core.app_state import AppState
-        entry.health.state = AppState.RUNNING
         self._current_app_id = app_id
-
         self._toolbar.setVisible(False)
         try:
             self._app_host.show_app(entry.instance)
         except Exception:
             logger.exception("Failed to build UI for app '%s'", app_id)
+            from ..core.app_state import AppState
             entry.health.state = AppState.ERROR
             self._current_app_id = None
             self._show_cards()  # restore toolbar + card grid
             return
 
-        # Update card state to show "Running" badge
-        self.update_card_state(app_id)
         self._stack.setCurrentIndex(1)
 
     # --- Slots ---
@@ -323,3 +310,13 @@ class DashboardDock(QgsDockWidget):
     def showEvent(self, event):
         super().showEvent(event)
         ThemeManager.apply_to_widget(self)
+        # Refresh all card states when dashboard becomes visible
+        self._refresh_all_card_states()
+
+    def _refresh_all_card_states(self):
+        """Update all app card states to reflect current health."""
+        for app_id in self._cards:
+            self.update_card_state(app_id)
+        for toolbox_card in self._toolbox_cards.values():
+            for app_id in toolbox_card.toolbox_entry.app_entries:
+                toolbox_card.update_app_state(app_id)
