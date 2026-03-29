@@ -1,0 +1,11 @@
+{
+  "name": "Feature Counter",
+  "id": "feature_counter",
+  "version": "1.0.0",
+  "author": "QGarage Team",
+  "description": "Counts features in a layer and exports statistics. Demonstrates declarative output specs for Processing framework integration.",
+  "icon_path": "",
+  "entry_point": "main.py",
+  "class_name": "FeatureCounterApp",
+  "tags": ["analysis", "statistics", "example"]
+}

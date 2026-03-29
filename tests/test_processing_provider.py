@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock
 
 from qgarage.core.app_registry import AppEntry, ToolboxEntry
-from qgarage.core.base_app import BaseApp, InputType
+from qgarage.core.base_app import BaseApp, InputType, OutputType
 from qgarage.core.processing_provider import (
     QGarageProcessingAlgorithm,
     QGarageProcessingProvider,
@@ -141,3 +141,86 @@ def test_algorithm_process_can_show_console(monkeypatch):
     algorithm.processAlgorithm({"distance": 10.0, SHOW_CONSOLE_PARAM: True}, None, MagicMock())
 
     assert captured["show_console"] is True
+
+
+def test_algorithm_exposes_declared_outputs(monkeypatch):
+    """Test that apps with add_output() declarations expose those outputs."""
+
+    class AppWithOutputs(BaseApp):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.add_input("input_value", "Input", InputType.INTEGER, default=10)
+            self.add_output("result_count", "Result Count", OutputType.INTEGER)
+            self.add_output("result_file", "Result File", OutputType.FILE)
+
+        def execute_logic(self, inputs):
+            return {
+                "status": "success",
+                "message": "Processed",
+                "result_count": inputs["input_value"] * 2,
+                "result_file": "/path/to/output.txt",
+            }
+
+    entry = AppEntry(
+        MagicMock(),
+        {"id": "output_test", "name": "Output Test"},
+    )
+    app = AppWithOutputs(
+        app_meta={"id": "output_test", "name": "Output Test"}, app_dir=MagicMock()
+    )
+    registry = DummyRegistry(
+        entries={entry.app_id: entry}, toolboxes={}, apps={entry.app_id: app}
+    )
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+        return app_instance.execute_logic(inputs)
+
+    monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)
+
+    algorithm = QGarageProcessingAlgorithm(registry, entry)
+    algorithm.initAlgorithm({})
+
+    # Check that outputs were registered
+    output_defs = algorithm.outputDefinitions()
+    output_names = [o.name() for o in output_defs]
+    assert "result_count" in output_names
+    assert "result_file" in output_names
+    assert "STATUS" not in output_names  # STATUS/MESSAGE are returned but not registered as outputs
+    assert "MESSAGE" not in output_names
+
+    # Check that outputs are returned correctly
+    result = algorithm.processAlgorithm({"input_value": 5}, None, MagicMock())
+    assert result["result_count"] == 10  # 5 * 2
+    assert result["result_file"] == "/path/to/output.txt"
+    assert result["STATUS"] == "success"
+    assert result["MESSAGE"] == "Processed"
+
+
+def test_algorithm_without_outputs_maintains_backward_compatibility(monkeypatch):
+    """Test that apps without add_output() calls still work as before."""
+    entry = AppEntry(
+        MagicMock(),
+        {"id": "buffer_tool", "name": "Buffer Tool"},
+    )
+    app = _make_app("buffer_tool", "Buffer Tool")
+    registry = DummyRegistry(
+        entries={entry.app_id: entry}, toolboxes={}, apps={entry.app_id: app}
+    )
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+        return {"status": "success", "message": "done", "extra_key": "ignored"}
+
+    monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)
+
+    algorithm = QGarageProcessingAlgorithm(registry, entry)
+    algorithm.initAlgorithm({})
+
+    # No custom outputs should be registered
+    output_defs = algorithm.outputDefinitions()
+    assert len(output_defs) == 0
+
+    # Should still return STATUS and MESSAGE
+    result = algorithm.processAlgorithm({"distance": 42.5}, None, MagicMock())
+    assert result == {"STATUS": "success", "MESSAGE": "done"}
+    # extra_key is not exposed because no output was declared for it
+    assert "extra_key" not in result
