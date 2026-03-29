@@ -40,8 +40,7 @@ from qgis.core import (
 )
 
 from .settings import get_uv_executable, ParameterCache
-from .subprocess_runner import ProcessMonitor, RUNNER_SCRIPT, serialize_inputs
-from .app_executor import start_isolated_app_run
+from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge
 
 logger = logging.getLogger("qgarage.base_app")
@@ -698,20 +697,21 @@ class BaseApp(ABC):
 
     def _launch_isolated(self, inputs: dict) -> None:
         """Serialise inputs, write runner+config, spawn uv run --isolated."""
-        run = start_isolated_app_run(
-            self,
-            self._get_uv_bridge(),
-            inputs,
-            show_console=True,
+        launch = launch_isolated_app_run(
+            app_dir=self.app_dir,
+            app_meta=self.app_meta,
+            inputs=inputs,
+            uv_bridge=self._get_uv_bridge(),
+            keep_open=True,
         )
-        self._tmp_dir = run.tmp_dir
+        self._tmp_dir = launch["tmp_dir"]
 
         # Start monitor thread – polls for output.json, signals us when done
         self._monitor = ProcessMonitor(
-            run.process,
-            run.output_path,
-            run.tmp_path,
-            stderr_log_path=run.stderr_log_path,
+            launch["process"],
+            launch["output_path"],
+            launch["tmp_path"],
+            stderr_log_path=launch["stderr_log_path"],
             parent=None,
         )
         self._monitor.completed.connect(self._on_subprocess_complete)

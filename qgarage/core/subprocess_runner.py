@@ -20,6 +20,8 @@ the script finishes, without blocking the UI.
 from __future__ import annotations
 
 import json
+import tempfile
+import time
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +105,7 @@ from unittest.mock import MagicMock
 # write a result file, even if the error happens during config loading.
 _output_path = None
 _stderr_log_file = None
+_keep_open = True
 
 
 def _safe_print(*args, **kwargs):
@@ -110,6 +113,45 @@ def _safe_print(*args, **kwargs):
     try:
         print(*args, **kwargs)
     except OSError:
+        pass
+
+
+def _pause_for_user(prompt):
+    """Best-effort pause that survives detached or broken stdin."""
+    if not _keep_open:
+        return
+
+    try:
+        input(prompt)
+        return
+    except (EOFError, KeyboardInterrupt, OSError):
+        pass
+
+    if os.name == "nt":
+        try:
+            import msvcrt
+
+            _safe_print(prompt, end="", flush=True)
+            while True:
+                key = msvcrt.getwch()
+                if key in ("\r", "\n"):
+                    break
+            return
+        except Exception:
+            pass
+
+        try:
+            os.system("pause")
+            return
+        except Exception:
+            pass
+
+    _safe_print("\n--- Console will close automatically in 10 seconds ---", flush=True)
+    try:
+        import time as _time_mod
+
+        _time_mod.sleep(10)
+    except Exception:
         pass
 
 
@@ -298,6 +340,7 @@ try:
         _stderr_tee = _StderrTee(sys.stderr, _stderr_log_path)
         sys.stderr = _stderr_tee
         _stderr_log_file = _stderr_tee
+    _keep_open = cfg.get("keep_open", True)
 
     with open(inputs_path) as _f:
         inputs = _deserialize(json.load(_f))
@@ -398,11 +441,117 @@ if _stderr_log_file is not None:
         pass
 
 # Keep window open so the user can read logs
-try:
-    input("\n--- Press Enter to close this window ---")
-except (EOFError, KeyboardInterrupt, OSError):
-    pass
+_pause_for_user("\n--- Press Enter to close this window ---")
 '''
+
+
+def launch_isolated_app_run(
+    app_dir: Path,
+    app_meta: dict[str, Any],
+    inputs: dict[str, Any],
+    uv_bridge,
+    *,
+    keep_open: bool = True,
+) -> dict[str, Any]:
+    """Prepare and launch an app in the shared uv-isolated runner."""
+    import qgarage
+
+    tmp_dir = tempfile.TemporaryDirectory(prefix="qgarage_run_")
+    tmp = Path(tmp_dir.name)
+
+    serialised = serialize_inputs(inputs, tmp)
+
+    inputs_path = tmp / "inputs.json"
+    output_path = tmp / "output.json"
+    runner_path = tmp / "runner.py"
+    config_path = tmp / "config.json"
+    stderr_log_path = tmp / "stderr.log"
+
+    inputs_path.write_text(json.dumps(serialised, default=str), encoding="utf-8")
+    runner_path.write_text(RUNNER_SCRIPT, encoding="utf-8")
+
+    plugin_dir = Path(qgarage.__file__).parent
+    requirements_path = app_dir / "requirements.txt"
+    venv_site_packages = uv_bridge.get_site_packages(app_dir)
+    config = {
+        "inputs_path": str(inputs_path),
+        "output_path": str(output_path),
+        "plugin_dir": str(plugin_dir),
+        "app_dir": str(app_dir),
+        "module_path": str(app_dir / app_meta.get("entry_point", "main.py")),
+        "class_name": app_meta.get("class_name", "App"),
+        "app_meta": dict(app_meta),
+        "stderr_log_path": str(stderr_log_path),
+        "keep_open": keep_open,
+    }
+    config_path.write_text(json.dumps(config), encoding="utf-8")
+
+    process = uv_bridge.launch_app_isolated(
+        runner_path=runner_path,
+        config_path=config_path,
+        requirements_path=requirements_path if requirements_path.exists() else None,
+        venv_site_packages=venv_site_packages,
+        show_window=keep_open,
+    )
+
+    return {
+        "tmp_dir": tmp_dir,
+        "tmp_path": tmp,
+        "output_path": output_path,
+        "stderr_log_path": stderr_log_path,
+        "process": process,
+    }
+
+
+def read_stderr_log(stderr_log_path: Path | None) -> str:
+    """Read captured stderr from the log file, if it exists."""
+    if stderr_log_path is None:
+        return ""
+    try:
+        if stderr_log_path.exists():
+            content = stderr_log_path.read_text(
+                encoding="utf-8", errors="replace"
+            ).strip()
+            return content
+    except Exception:
+        pass
+    return ""
+
+
+def wait_for_isolated_app_result(
+    process,
+    output_path: Path,
+    stderr_log_path: Path | None = None,
+    feedback: Any = None,
+    poll_ms: int = 250,
+) -> dict[str, Any]:
+    """Wait for the shared isolated runner to write its result JSON."""
+    while True:
+        if feedback is not None and hasattr(feedback, "isCanceled") and feedback.isCanceled():
+            if process.poll() is None:
+                process.terminate()
+            raise RuntimeError("Execution canceled.")
+
+        if output_path.exists():
+            with open(output_path, encoding="utf-8") as result_file:
+                return json.load(result_file)
+
+        if process.poll() is not None:
+            if output_path.exists():
+                with open(output_path, encoding="utf-8") as result_file:
+                    return json.load(result_file)
+
+            detail = read_stderr_log(stderr_log_path)
+            message = (
+                f"Process exited with code {process.returncode} before writing a result."
+            )
+            if detail:
+                message += f"\n\n{detail}"
+            else:
+                message += " Check the subprocess logs for details."
+            raise RuntimeError(message)
+
+        time.sleep(poll_ms / 1000)
 
 
 # ── Process monitor thread ────────────────────────────────────────────────────
@@ -475,14 +624,4 @@ class ProcessMonitor(QThread):
 
     def _read_stderr_log(self) -> str:
         """Read captured stderr from the log file, if it exists."""
-        if self._stderr_log is None:
-            return ""
-        try:
-            if self._stderr_log.exists():
-                content = self._stderr_log.read_text(
-                    encoding="utf-8", errors="replace"
-                ).strip()
-                return content
-        except Exception:
-            pass
-        return ""
+        return read_stderr_log(self._stderr_log)
