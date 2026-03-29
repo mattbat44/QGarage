@@ -5,6 +5,14 @@ from typing import Any, Optional
 from qgis.core import (
     QgsProcessingAlgorithm,
     QgsProcessingException,
+    QgsProcessingOutputBoolean,
+    QgsProcessingOutputFile,
+    QgsProcessingOutputFolder,
+    QgsProcessingOutputMapLayer,
+    QgsProcessingOutputNumber,
+    QgsProcessingOutputRasterLayer,
+    QgsProcessingOutputString,
+    QgsProcessingOutputVectorLayer,
     QgsProcessingParameterBoolean,
     QgsProcessingParameterCrs,
     QgsProcessingParameterEnum,
@@ -20,7 +28,7 @@ from qgis.core import (
 
 from .app_executor import run_app_isolated
 from .app_registry import AppEntry, AppRegistry
-from .base_app import BaseApp, InputSpec, InputType
+from .base_app import BaseApp, InputSpec, InputType, OutputSpec, OutputType
 
 DEFAULT_GROUP_ID = "qgarage_apps"
 DEFAULT_GROUP_NAME = "Apps"
@@ -78,6 +86,11 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
             if parameter is not None:
                 self.addParameter(parameter)
 
+        for spec in app._output_specs:
+            output = self._build_output(spec)
+            if output is not None:
+                self.addOutput(output)
+
     def processAlgorithm(self, parameters: dict, context, feedback) -> dict[str, Any]:
         app = self._get_app()
         if app is None:
@@ -119,10 +132,17 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
                 feedback.reportError(traceback_text, fatalError=False)
             raise QgsProcessingException(result.get("message", "QGarage app failed"))
 
-        return {
-            "STATUS": result.get("status", "success"),
-            "MESSAGE": result.get("message", ""),
-        }
+        # Extract declared outputs from the result dict
+        outputs = {}
+        for spec in app._output_specs:
+            if spec.key in result:
+                outputs[spec.key] = result[spec.key]
+
+        # For backward compatibility, always include STATUS and MESSAGE
+        outputs["STATUS"] = result.get("status", "success")
+        outputs["MESSAGE"] = result.get("message", "")
+
+        return outputs
 
     def _get_app(self) -> Optional[BaseApp]:
         app = self._registry.load_app(self._entry.app_id)
@@ -270,6 +290,41 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
             defaultValue=default_value,
             optional=optional,
         )
+
+    @staticmethod
+    def _build_output(spec: OutputSpec):
+        """Build a QgsProcessingOutput from an OutputSpec."""
+        description = spec.description or spec.label
+
+        if spec.output_type == OutputType.STRING:
+            return QgsProcessingOutputString(spec.key, description)
+
+        if spec.output_type == OutputType.INTEGER:
+            return QgsProcessingOutputNumber(spec.key, description)
+
+        if spec.output_type == OutputType.FLOAT:
+            return QgsProcessingOutputNumber(spec.key, description)
+
+        if spec.output_type == OutputType.BOOLEAN:
+            return QgsProcessingOutputBoolean(spec.key, description)
+
+        if spec.output_type == OutputType.FILE:
+            return QgsProcessingOutputFile(spec.key, description)
+
+        if spec.output_type == OutputType.FOLDER:
+            return QgsProcessingOutputFolder(spec.key, description)
+
+        if spec.output_type == OutputType.VECTOR_LAYER:
+            return QgsProcessingOutputVectorLayer(spec.key, description)
+
+        if spec.output_type == OutputType.RASTER_LAYER:
+            return QgsProcessingOutputRasterLayer(spec.key, description)
+
+        if spec.output_type == OutputType.ANY_LAYER:
+            return QgsProcessingOutputMapLayer(spec.key, description)
+
+        # Default to string output
+        return QgsProcessingOutputString(spec.key, description)
 
     def _parameter_value(self, spec: InputSpec, parameters: dict, context):
         if spec.input_type in (InputType.STRING, InputType.FILE_PATH, InputType.FOLDER_PATH):
