@@ -5,6 +5,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 from urllib.error import URLError
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
@@ -73,8 +74,17 @@ class DownloadAndInstallWorker(QThread):
             temp_dir = Path(tempfile.mkdtemp(prefix="qgarage_install_"))
             zip_path = temp_dir / "app.zip"
 
+            parsed = urlparse(self.url)
+            if parsed.scheme not in ("http", "https"):
+                self.finished.emit(
+                    False,
+                    f"Invalid URL scheme '{parsed.scheme}': only http and https are allowed",
+                    False,
+                )
+                return
+
             req = Request(self.url, headers={"User-Agent": "QGarage/0.1"})
-            response = urlopen(req, timeout=60)
+            response = urlopen(req, timeout=60)  # noqa: S310
             total = int(response.headers.get("Content-Length", 0))
             downloaded = 0
 
