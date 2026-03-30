@@ -1,5 +1,4 @@
 from pathlib import Path
-from typing import Optional
 
 from qgis.PyQt.QtWidgets import QApplication
 from qgis.PyQt.QtGui import QPalette

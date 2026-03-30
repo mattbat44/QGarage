@@ -117,7 +117,9 @@ def run_app_isolated(
                     ),
                 }
                 if run.stderr_log_path.exists():
-                    stderr_text = run.stderr_log_path.read_text(encoding="utf-8").strip()
+                    stderr_text = run.stderr_log_path.read_text(
+                        encoding="utf-8"
+                    ).strip()
                     if stderr_text:
                         result["traceback"] = stderr_text
                 return result

@@ -4,9 +4,7 @@ import json
 import shutil
 from pathlib import Path
 
-import pytest
-
-from qgarage.core.app_state import AppHealth, AppState
+from qgarage.core.app_state import AppState
 
 
 class TestAppEntry:

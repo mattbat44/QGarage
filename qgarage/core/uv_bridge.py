@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
-from .constants import DEFAULT_ENCODING, REQUIREMENTS_FILENAME, VENV_DIR
+from .constants import REQUIREMENTS_FILENAME, VENV_DIR
 from .logger import log_error, log_info
 
 _CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
@@ -21,7 +21,9 @@ _UV_CANDIDATE_DIRS_WIN = [
 ]
 
 
-def _wrap_windowed_command(command: Sequence[str], keep_open_on_failure: bool) -> list[str]:
+def _wrap_windowed_command(
+    command: Sequence[str], keep_open_on_failure: bool
+) -> list[str]:
     """Wrap a Windows console command so startup failures remain visible."""
     if platform.system() != "Windows" or not keep_open_on_failure:
         return list(command)

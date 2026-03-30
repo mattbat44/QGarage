@@ -155,7 +155,9 @@ class DashboardDock(QgsDockWidget):
 
         # Add standalone apps (those not in toolboxes)
         entries = self._registry.entries
-        total_count = len(toolbox_entries) + sum(1 for e in entries.values() if e.parent_toolbox_id is None)
+        total_count = len(toolbox_entries) + sum(
+            1 for e in entries.values() if e.parent_toolbox_id is None
+        )
         self._empty_label.setVisible(total_count == 0)
 
         for app_id, entry in entries.items():
@@ -241,6 +243,7 @@ class DashboardDock(QgsDockWidget):
         except Exception:
             logger.exception("Failed to build UI for app '%s'", app_id)
             from ..core.app_state import AppState
+
             entry.health.state = AppState.ERROR
             self._current_app_id = None
             self._show_cards()  # restore toolbar + card grid
@@ -289,9 +292,9 @@ class DashboardDock(QgsDockWidget):
 
             # Check if toolbox itself matches
             toolbox_matches = (
-                text_lower in toolbox_name
-                or text_lower in toolbox_desc
-                or text_lower in toolbox_tags
+                text_lower in toolbox_name or
+                text_lower in toolbox_desc or
+                text_lower in toolbox_tags
             )
 
             # Check if any app in the toolbox matches
@@ -300,7 +303,11 @@ class DashboardDock(QgsDockWidget):
                 app_name = app_entry.app_meta.get("name", "").lower()
                 app_desc = app_entry.app_meta.get("description", "").lower()
                 app_tags = " ".join(app_entry.app_meta.get("tags", [])).lower()
-                if text_lower in app_name or text_lower in app_desc or text_lower in app_tags:
+                if (
+                    text_lower in app_name or
+                    text_lower in app_desc or
+                    text_lower in app_tags
+                ):
                     any_app_matches = True
                     break
 

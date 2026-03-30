@@ -1,7 +1,6 @@
 """Maps QGarage InputType to QgsProcessingParameter types."""
 
 from qgis.core import (
-    QgsProcessing,
     QgsProcessingParameterBoolean,
     QgsProcessingParameterCrs,
     QgsProcessingParameterEnum,
@@ -43,7 +42,9 @@ def create_processing_parameter(spec: InputSpec):
             name,
             description,
             type=QgsProcessingParameterNumber.Type.Integer,
-            defaultValue=default_value if default_value is not None else int(spec.min_value),
+            defaultValue=default_value
+            if default_value is not None
+            else int(spec.min_value),
             optional=optional,
             minValue=int(spec.min_value),
             maxValue=int(spec.max_value),
@@ -73,7 +74,9 @@ def create_processing_parameter(spec: InputSpec):
             name,
             description,
             options=spec.choices,
-            defaultValue=spec.choices.index(default_value) if default_value and default_value in spec.choices else 0,
+            defaultValue=spec.choices.index(default_value)
+            if default_value and default_value in spec.choices
+            else 0,
             optional=optional,
         )
 
@@ -114,6 +117,7 @@ def create_processing_parameter(spec: InputSpec):
         # Processing doesn't have a generic "any layer" - we'll use FeatureSource
         # which accepts both vector and raster
         from qgis.core import QgsProcessingParameterMapLayer
+
         return QgsProcessingParameterMapLayer(
             name,
             description,
@@ -156,7 +160,9 @@ def create_processing_parameter(spec: InputSpec):
     )
 
 
-def extract_parameter_value(spec: InputSpec, parameters: dict, param_key: str, context, algorithm):
+def extract_parameter_value(
+    spec: InputSpec, parameters: dict, param_key: str, context, algorithm
+):
     """Extract and convert a parameter value from Processing parameters.
 
     Args:

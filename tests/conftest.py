@@ -24,30 +24,78 @@ def _install_qgis_mock():
 
     class _DummyProcessingParameter:
         def __init__(self, name, description="", **kwargs):
-            self.name = name
-            self.description = description
+            self._name = name
+            self._description = description
             self.kwargs = kwargs
 
+        def name(self):
+            return self._name
+
+        def description(self):
+            return self._description
+
+        def defaultValue(self):
+            return self.kwargs.get("defaultValue")
+
+        def options(self):
+            return self.kwargs.get("options", [])
+
+        def type(self):
+            return self.kwargs.get("type")
+
+        def minimum(self):
+            return self.kwargs.get("minValue")
+
+        def maximum(self):
+            return self.kwargs.get("maxValue")
+
     class _DummyProcessingParameterNumber(_DummyProcessingParameter):
-        Integer = 0
-        Double = 1
+        class Type:
+            Integer = 0
+            Double = 1
+
+        Integer = Type.Integer
+        Double = Type.Double
 
     class _DummyProcessingParameterFile(_DummyProcessingParameter):
-        File = 0
-        Folder = 1
+        class Behavior:
+            File = 0
+            Folder = 1
+
+        File = Behavior.File
+        Folder = Behavior.Folder
 
     class _DummyProcessingParameterField(_DummyProcessingParameter):
         Any = 0
 
+    class _DummyProcessingOutput:
+        def __init__(self, name, description="", **kwargs):
+            self._name = name
+            self._description = description
+            self.kwargs = kwargs
+
+        def name(self):
+            return self._name
+
+        def description(self):
+            return self._description
+
     class _DummyProcessingAlgorithm:
         def __init__(self):
             self._parameters = []
+            self._outputs = []
 
         def addParameter(self, parameter):
             self._parameters.append(parameter)
 
+        def addOutput(self, output):
+            self._outputs.append(output)
+
         def parameterDefinitions(self):
             return list(self._parameters)
+
+        def outputDefinitions(self):
+            return list(self._outputs)
 
         def parameterAsString(self, parameters, name, context):
             return parameters.get(name)
@@ -77,6 +125,9 @@ def _install_qgis_mock():
             return parameters.get(name)
 
         def parameterAsCrs(self, parameters, name, context):
+            return parameters.get(name)
+
+        def parameterAsFile(self, parameters, name, context):
             return parameters.get(name)
 
     class _DummyProcessingProvider:
@@ -159,9 +210,7 @@ def _install_qgis_mock():
     core_mock.Qgis.MessageLevel.Critical = 2
     core_mock.QgsProcessingAlgorithm = _DummyProcessingAlgorithm
     core_mock.QgsProcessingProvider = _DummyProcessingProvider
-    core_mock.QgsProcessingException = type(
-        "QgsProcessingException", (Exception,), {}
-    )
+    core_mock.QgsProcessingException = type("QgsProcessingException", (Exception,), {})
     core_mock.QgsProcessingParameterString = _DummyProcessingParameter
     core_mock.QgsProcessingParameterNumber = _DummyProcessingParameterNumber
     core_mock.QgsProcessingParameterBoolean = _DummyProcessingParameter
@@ -175,6 +224,14 @@ def _install_qgis_mock():
     core_mock.QgsProcessingContext = _DummyProcessingContext
     core_mock.QgsProcessingFeedback = _DummyProcessingFeedback
     core_mock.QgsApplication = _DummyQgsApplication
+    core_mock.QgsProcessingOutputBoolean = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputFile = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputFolder = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputMapLayer = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputNumber = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputRasterLayer = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputString = _DummyProcessingOutput
+    core_mock.QgsProcessingOutputVectorLayer = _DummyProcessingOutput
 
     # QgsMapLayerProxyModel needs a Filter attribute
     core_mock.QgsMapLayerProxyModel.Filter.VectorLayer = 1
@@ -187,6 +244,7 @@ def _install_qgis_mock():
 
     # Qt namespace stubs used by base_app and card widget
     qtcore = sys.modules["qgis.PyQt.QtCore"]
+    qtcore.QCoreApplication.translate = staticmethod(lambda context, text: text)
     qtcore.Qt.CursorShape.PointingHandCursor = 13
     qtcore.Qt.AspectRatioMode.KeepAspectRatio = 1
     qtcore.Qt.TransformationMode.SmoothTransformation = 1

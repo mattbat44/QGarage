@@ -52,11 +52,17 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
 
     def group(self) -> str:
         toolbox_entry = self._toolbox_entry()
-        return toolbox_entry.toolbox_name if toolbox_entry is not None else DEFAULT_GROUP_NAME
+        return (
+            toolbox_entry.toolbox_name
+            if toolbox_entry is not None
+            else DEFAULT_GROUP_NAME
+        )
 
     def groupId(self) -> str:
         toolbox_entry = self._toolbox_entry()
-        return toolbox_entry.toolbox_id if toolbox_entry is not None else DEFAULT_GROUP_ID
+        return (
+            toolbox_entry.toolbox_id if toolbox_entry is not None else DEFAULT_GROUP_ID
+        )
 
     def shortHelpString(self) -> str:
         description = self._entry.app_meta.get("description", "")
@@ -327,7 +333,11 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
         return QgsProcessingOutputString(spec.key, description)
 
     def _parameter_value(self, spec: InputSpec, parameters: dict, context):
-        if spec.input_type in (InputType.STRING, InputType.FILE_PATH, InputType.FOLDER_PATH):
+        if spec.input_type in (
+            InputType.STRING,
+            InputType.FILE_PATH,
+            InputType.FOLDER_PATH,
+        ):
             return self.parameterAsString(parameters, spec.key, context)
 
         if spec.input_type == InputType.TEXT_AREA:

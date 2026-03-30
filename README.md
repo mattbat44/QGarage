@@ -188,6 +188,16 @@ class HelloWorldApp(BaseApp):
 .\install-qgarage-plugin.ps1
 ```
 
+### Build Plugin Zip
+
+```powershell
+.\build-qgarage-package.ps1
+```
+
+This runs the targeted flake8 checks, the full test suite, Bandit, and
+detect-secrets, then writes a versioned plugin archive to
+`dist/qgarage_v<version>.zip`.
+
 Then in QGIS:
 1. Open the QGarage dashboard
 2. Look for "Hello World" in the app grid
@@ -390,6 +400,11 @@ uv run pytest
    ```powershell
    .\install-qgarage-plugin.ps1
    ```
+
+    Build a versioned zip for distribution:
+    ```powershell
+    .\build-qgarage-package.ps1
+    ```
 
 3. Reload plugin in QGIS (Plugins → Manage and Install Plugins → Reinstall)
 

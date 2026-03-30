@@ -39,6 +39,7 @@ from qgis.core import (
     QgsVectorLayer,
 )
 
+from .app_state import AppHealth
 from .settings import get_uv_executable, ParameterCache
 from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge
@@ -625,7 +626,7 @@ class BaseApp(ABC):
         for entry in reversed(history):  # most recent first
             ts = entry.get("timestamp", "?")
             try:
-                from datetime import datetime, timezone
+                from datetime import datetime
 
                 dt = datetime.fromisoformat(ts)
                 label = dt.astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -679,6 +680,7 @@ class BaseApp(ABC):
         # Set state to RUNNING when execution starts
         if self._health:
             from .app_state import AppState
+
             self._health.state = AppState.RUNNING
 
         try:
@@ -693,6 +695,7 @@ class BaseApp(ABC):
             # Reset state on failure
             if self._health:
                 from .app_state import AppState
+
                 self._health.state = AppState.READY
 
     def _launch_isolated(self, inputs: dict) -> None:
@@ -741,6 +744,7 @@ class BaseApp(ABC):
         # Reset state to READY when execution completes
         if self._health:
             from .app_state import AppState
+
             self._health.state = AppState.READY
         # tmp_dir cleanup happens when TemporaryDirectory is GC'd
 
@@ -754,6 +758,7 @@ class BaseApp(ABC):
         # Reset state to READY on error
         if self._health:
             from .app_state import AppState
+
             self._health.state = AppState.READY
 
     def on_finalize(self, result: dict) -> None:

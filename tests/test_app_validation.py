@@ -11,7 +11,6 @@ from pathlib import Path
 
 import pytest
 
-from qgarage.core.app_state import AppState
 from qgarage.core.constants import (
     APP_META_FILENAME,
     DEFAULT_ENTRY_POINT,
@@ -253,7 +252,9 @@ class TestHelloWorldApp:
 
     @pytest.fixture
     def hello_dir(self) -> Path:
-        return Path(__file__).resolve().parent.parent / "qgarage" / "apps" / "hello_world"
+        return (
+            Path(__file__).resolve().parent.parent / "qgarage" / "apps" / "hello_world"
+        )
 
     def test_structure(self, hello_dir):
         if not hello_dir.exists():

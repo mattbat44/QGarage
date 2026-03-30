@@ -138,7 +138,9 @@ def test_algorithm_process_can_show_console(monkeypatch):
     algorithm = QGarageProcessingAlgorithm(registry, entry)
     algorithm.initAlgorithm({})
 
-    algorithm.processAlgorithm({"distance": 10.0, SHOW_CONSOLE_PARAM: True}, None, MagicMock())
+    algorithm.processAlgorithm(
+        {"distance": 10.0, SHOW_CONSOLE_PARAM: True}, None, MagicMock()
+    )
 
     assert captured["show_console"] is True
 
@@ -185,7 +187,9 @@ def test_algorithm_exposes_declared_outputs(monkeypatch):
     output_names = [o.name() for o in output_defs]
     assert "result_count" in output_names
     assert "result_file" in output_names
-    assert "STATUS" not in output_names  # STATUS/MESSAGE are returned but not registered as outputs
+    assert (
+        "STATUS" not in output_names
+    )  # STATUS/MESSAGE are returned but not registered as outputs
     assert "MESSAGE" not in output_names
 
     # Check that outputs are returned correctly

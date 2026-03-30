@@ -7,7 +7,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..core.settings import get_setting, get_uv_executable, set_setting
+from ..core.settings import get_uv_executable, set_setting
 
 
 class SettingsDialog(QDialog):

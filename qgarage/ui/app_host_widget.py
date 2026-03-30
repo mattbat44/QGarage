@@ -1,7 +1,6 @@
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QPushButton,
     QScrollArea,
     QVBoxLayout,

@@ -1,11 +1,10 @@
 """Tests for QGIS Processing framework integration."""
 
-import pytest
 from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock, patch
 
 from qgarage.core.base_app import BaseApp, InputType
-from qgarage.processing.parameter_mapper import create_processing_parameter, extract_parameter_value
+from qgarage.processing.parameter_mapper import create_processing_parameter
 from qgarage.processing.algorithm_wrapper import BaseAppAlgorithm
 from qgarage.processing.processing_provider import QGarageProcessingProvider
 
@@ -17,7 +16,9 @@ class SimpleTestApp(BaseApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.add_input("name", "Name", InputType.STRING, default="Test")
-        self.add_input("count", "Count", InputType.INTEGER, default=1, min_value=1, max_value=10)
+        self.add_input(
+            "count", "Count", InputType.INTEGER, default=1, min_value=1, max_value=10
+        )
         self.add_input("enabled", "Enabled", InputType.BOOLEAN, default=True)
 
     def execute_logic(self, inputs):
@@ -34,6 +35,7 @@ class DynamicTestApp(BaseApp):
 
     def build_dynamic_widget(self):
         from qgis.PyQt.QtWidgets import QWidget
+
         return QWidget()
 
 
@@ -157,7 +159,7 @@ def test_algorithm_init_parameters():
 
 def test_processing_provider_filters_dynamic_apps():
     """Test that Processing provider skips dynamic apps."""
-    from qgarage.core.app_registry import AppRegistry, AppEntry
+    from qgarage.core.app_registry import AppRegistry
     from unittest.mock import Mock
 
     # Create mock registry with both declarative and dynamic apps
@@ -240,9 +242,13 @@ def test_algorithm_process_execution():
     feedback = Mock()
 
     # Mock the parameterAs* methods
-    algorithm.parameterAsString = Mock(side_effect=lambda p, k, c: parameters.get(k, ""))
+    algorithm.parameterAsString = Mock(
+        side_effect=lambda p, k, c: parameters.get(k, "")
+    )
     algorithm.parameterAsInt = Mock(side_effect=lambda p, k, c: parameters.get(k, 0))
-    algorithm.parameterAsBool = Mock(side_effect=lambda p, k, c: parameters.get(k, False))
+    algorithm.parameterAsBool = Mock(
+        side_effect=lambda p, k, c: parameters.get(k, False)
+    )
 
     isolated_result = {
         "status": "success",
@@ -250,11 +256,14 @@ def test_algorithm_process_execution():
         "__added_layers__": [],
     }
 
-    with patch(
-        "qgarage.processing.algorithm_wrapper.launch_isolated_app_run"
-    ) as launch_run, patch(
-        "qgarage.processing.algorithm_wrapper.wait_for_isolated_app_result"
-    ) as wait_for_result:
+    with (
+        patch(
+            "qgarage.processing.algorithm_wrapper.launch_isolated_app_run"
+        ) as launch_run,
+        patch(
+            "qgarage.processing.algorithm_wrapper.wait_for_isolated_app_result"
+        ) as wait_for_result,
+    ):
         launch_run.return_value = {
             "process": Mock(),
             "output_path": Path("/tmp/output.json"),
@@ -270,7 +279,3 @@ def test_algorithm_process_execution():
     assert "3 times" in result["message"]
     launch_run.assert_called_once()
     wait_for_result.assert_called_once()
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])

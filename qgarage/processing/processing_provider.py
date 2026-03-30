@@ -1,7 +1,6 @@
 """QgsProcessingProvider for QGarage apps."""
 
 import logging
-from pathlib import Path
 
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon

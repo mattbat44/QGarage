@@ -3,17 +3,15 @@ import os
 from pathlib import Path
 from typing import Optional
 
+from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
 
-from qgis.core import QgsApplication
-
-from .core.app_registry import AppEntry, AppRegistry, ToolboxEntry
+from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
-from .core.processing_provider import QGarageProcessingProvider
 from .core.settings import get_uv_executable
 from .core.uv_bridge import UvBridge
 from .processing.processing_provider import QGarageProcessingProvider
@@ -35,7 +33,6 @@ class QGaragePlugin:
         self.registry: Optional[AppRegistry] = None
         self.processing_provider: Optional[QGarageProcessingProvider] = None
         self.uv_bridge: Optional[UvBridge] = None
-        self.processing_provider: Optional[QGarageProcessingProvider] = None
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -61,8 +58,6 @@ class QGaragePlugin:
             self.registry = AppRegistry(APPS_DIR, self.uv_bridge)
             self.registry.discover()
             self.registry.load_all()
-            self.processing_provider = QGarageProcessingProvider(self.registry)
-            QgsApplication.processingRegistry().addProvider(self.processing_provider)
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
@@ -76,38 +71,111 @@ class QGaragePlugin:
 
         # Register Processing provider
         if self.registry is not None:
-            self.processing_provider = QGarageProcessingProvider(
-                self.registry, icon_path=icon_path
-            )
-            QgsApplication.processingRegistry().addProvider(self.processing_provider)
+            self._register_processing_provider(icon_path=icon_path)
 
     def unload(self):
         """Called by QGIS when the plugin is unloaded."""
         # Unregister Processing provider
-        if self.processing_provider is not None:
-            QgsApplication.processingRegistry().removeProvider(self.processing_provider)
-            self.processing_provider = None
+        self._remove_processing_provider()
 
         if self.registry is not None:
-            self.registry.unload_all()
+            try:
+                self.registry.unload_all()
+            except RuntimeError:
+                # QGIS teardown can invalidate wrapped objects before plugin unload.
+                pass
             self.registry = None
 
-        if self.processing_provider is not None:
-            QgsApplication.processingRegistry().removeProvider(self.processing_provider)
-            self.processing_provider = None
-
-        if self.dock is not None:
+        if self.dock is not None and not sip.isdeleted(self.dock):
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()
             self.dock = None
+        else:
+            self.dock = None
 
-        if self.action is not None:
+        if self.action is not None and not sip.isdeleted(self.action):
             self.iface.removeToolBarIcon(self.action)
             self.iface.removePluginMenu("&QGarage", self.action)
             self.action.deleteLater()
             self.action = None
+        else:
+            self.action = None
 
         self.uv_bridge = None
+
+    def _provider_is_alive(self) -> bool:
+        provider = self.processing_provider
+        if provider is None:
+            return False
+        try:
+            return not sip.isdeleted(provider)
+        except Exception:
+            return False
+
+    def _remove_processing_provider(self) -> None:
+        if not self._provider_is_alive():
+            self.processing_provider = None
+            return
+
+        try:
+            QgsApplication.processingRegistry().removeProvider(self.processing_provider)
+        except RuntimeError:
+            # Provider can already be deleted by QGIS teardown order.
+            pass
+        finally:
+            self.processing_provider = None
+
+    def _register_processing_provider(self, icon_path: str | None = None) -> None:
+        if self.registry is None:
+            self.processing_provider = None
+            return
+
+        # Always clear the existing local reference first.
+        self._remove_processing_provider()
+
+        registry = QgsApplication.processingRegistry()
+
+        # If QGIS already has a stale provider with this id, remove it.
+        existing = None
+        if hasattr(registry, "providerById"):
+            try:
+                existing = registry.providerById("qgarage")
+            except Exception:
+                existing = None
+        if existing is not None:
+            try:
+                registry.removeProvider(existing)
+            except Exception:
+                pass
+
+        provider = QGarageProcessingProvider(self.registry, icon_path=icon_path)
+        added = False
+        try:
+            added = bool(registry.addProvider(provider))
+        except RuntimeError as e:
+            log_error(f"Failed to add Processing provider: {e}")
+
+        if added:
+            self.processing_provider = provider
+            return
+
+        # Fallback for registry implementations without providerById support.
+        if hasattr(registry, "providers"):
+            try:
+                for existing_provider in list(registry.providers()):
+                    try:
+                        if existing_provider.id() == "qgarage":
+                            registry.removeProvider(existing_provider)
+                    except Exception:
+                        continue
+                if registry.addProvider(provider):
+                    self.processing_provider = provider
+                    return
+            except Exception:
+                pass
+
+        self.processing_provider = None
+        log_error("Could not register QGarage Processing provider")
 
     def _toggle_dock(self, checked: bool):
         if self.dock is not None:
@@ -135,7 +203,6 @@ class QGaragePlugin:
             # Re-discover to pick up the new/updated toolbox
             self.registry.discover()
             self.dock.refresh_cards()
-            self._refresh_processing_provider()
         else:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
@@ -153,11 +220,9 @@ class QGaragePlugin:
             self.registry.register_entry(entry)
             self.registry.load_app(item_id)
             self.dock.add_card(entry)
-            self._refresh_processing_provider()
 
-        # Refresh Processing provider to include the new app
-        if self.processing_provider is not None:
-            self.processing_provider.refreshAlgorithms()
+        # Ensure provider is present and refreshed after install/reinstall.
+        self._refresh_processing_provider()
 
     def _on_new_app_requested(self):
         dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
@@ -165,5 +230,17 @@ class QGaragePlugin:
         dialog.exec()
 
     def _refresh_processing_provider(self) -> None:
-        if self.processing_provider is not None:
+        if self.registry is None:
+            self.processing_provider = None
+            return
+
+        if not self._provider_is_alive():
+            self._register_processing_provider()
+            return
+
+        try:
             self.processing_provider.refreshAlgorithms()
+        except RuntimeError:
+            # Wrapped provider can become invalid after plugin reload cycles.
+            self.processing_provider = None
+            self._register_processing_provider()
