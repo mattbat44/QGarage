@@ -5,12 +5,40 @@ import tempfile
 import zipfile
 from pathlib import Path
 from urllib.error import URLError
-from urllib.parse import urlparse
-from urllib.request import Request, urlopen
+from urllib.parse import urljoin, urlparse
+from urllib.request import HTTPHandler, HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
 logger = logging.getLogger("qgarage.download_worker")
+
+ALLOWED_DOWNLOAD_SCHEMES = {"http", "https"}
+
+
+class _SafeHttpRedirectHandler(HTTPRedirectHandler):
+    """Restrict redirects to http/https targets only."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        redirect_url = urljoin(req.full_url, newurl)
+        parsed_redirect = urlparse(redirect_url)
+        if parsed_redirect.scheme not in ALLOWED_DOWNLOAD_SCHEMES:
+            raise URLError(
+                f"Redirected to unsupported URL scheme '{parsed_redirect.scheme}'"
+            )
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _open_remote_zip(url: str, timeout: int):
+    """Open a remote ZIP download using handlers limited to http/https."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ALLOWED_DOWNLOAD_SCHEMES:
+        raise URLError(
+            f"Invalid URL scheme '{parsed.scheme}': only http and https are allowed"
+        )
+
+    opener = build_opener(HTTPHandler, HTTPSHandler, _SafeHttpRedirectHandler)
+    req = Request(url, headers={"User-Agent": "QGarage/0.1"})
+    return opener.open(req, timeout=timeout)
 
 
 def _normalize_icon_path(
@@ -75,7 +103,7 @@ class DownloadAndInstallWorker(QThread):
             zip_path = temp_dir / "app.zip"
 
             parsed = urlparse(self.url)
-            if parsed.scheme not in ("http", "https"):
+            if parsed.scheme not in ALLOWED_DOWNLOAD_SCHEMES:
                 self.finished.emit(
                     False,
                     f"Invalid URL scheme '{parsed.scheme}': only http and https are allowed",
@@ -83,26 +111,25 @@ class DownloadAndInstallWorker(QThread):
                 )
                 return
 
-            req = Request(self.url, headers={"User-Agent": "QGarage/0.1"})
-            response = urlopen(req, timeout=60)  # noqa: S310
-            total = int(response.headers.get("Content-Length", 0))
-            downloaded = 0
+            with _open_remote_zip(self.url, timeout=60) as response:
+                total = int(response.headers.get("Content-Length", 0))
+                downloaded = 0
 
-            with open(zip_path, "wb") as f:
-                while True:
-                    if self._cancelled:
-                        self.finished.emit(False, "Installation cancelled", False)
-                        return
-                    chunk = response.read(8192)
-                    if not chunk:
-                        break
-                    f.write(chunk)
-                    downloaded += len(chunk)
-                    if total > 0:
-                        pct = int((downloaded / total) * 35) + 5
-                        self.progress.emit(
-                            pct, f"Downloaded {downloaded}/{total} bytes"
-                        )
+                with open(zip_path, "wb") as f:
+                    while True:
+                        if self._cancelled:
+                            self.finished.emit(False, "Installation cancelled", False)
+                            return
+                        chunk = response.read(8192)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total > 0:
+                            pct = int((downloaded / total) * 35) + 5
+                            self.progress.emit(
+                                pct, f"Downloaded {downloaded}/{total} bytes"
+                            )
 
             self.progress.emit(40, "Download complete. Extracting...")
 
