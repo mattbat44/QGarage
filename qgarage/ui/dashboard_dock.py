@@ -292,9 +292,9 @@ class DashboardDock(QgsDockWidget):
 
             # Check if toolbox itself matches
             toolbox_matches = (
-                text_lower in toolbox_name or
-                text_lower in toolbox_desc or
-                text_lower in toolbox_tags
+                text_lower in toolbox_name
+                or text_lower in toolbox_desc
+                or text_lower in toolbox_tags
             )
 
             # Check if any app in the toolbox matches
@@ -304,9 +304,9 @@ class DashboardDock(QgsDockWidget):
                 app_desc = app_entry.app_meta.get("description", "").lower()
                 app_tags = " ".join(app_entry.app_meta.get("tags", [])).lower()
                 if (
-                    text_lower in app_name or
-                    text_lower in app_desc or
-                    text_lower in app_tags
+                    text_lower in app_name
+                    or text_lower in app_desc
+                    or text_lower in app_tags
                 ):
                     any_app_matches = True
                     break
