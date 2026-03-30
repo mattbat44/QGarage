@@ -6,7 +6,13 @@ import zipfile
 from pathlib import Path
 from urllib.error import URLError
 from urllib.parse import urljoin, urlparse
-from urllib.request import HTTPHandler, HTTPRedirectHandler, HTTPSHandler, Request, build_opener
+from urllib.request import (
+    HTTPHandler,
+    HTTPRedirectHandler,
+    HTTPSHandler,
+    Request,
+    build_opener,
+)
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
@@ -135,7 +141,9 @@ class DownloadAndInstallWorker(QThread):
 
             # Phase 2: Extract (40-55%)
             if not zipfile.is_zipfile(zip_path):
-                self.finished.emit(False, "Downloaded file is not a valid ZIP archive", False)
+                self.finished.emit(
+                    False, "Downloaded file is not a valid ZIP archive", False
+                )
                 return
 
             extract_dir = temp_dir / "extracted"
@@ -154,7 +162,11 @@ class DownloadAndInstallWorker(QThread):
             # Not a toolbox, check for app
             app_meta_files = list(extract_dir.rglob("app_meta.json"))
             if not app_meta_files:
-                self.finished.emit(False, "No app_meta.json or toolbox_meta.json found in archive", False)
+                self.finished.emit(
+                    False,
+                    "No app_meta.json or toolbox_meta.json found in archive",
+                    False,
+                )
                 return
 
             self._install_app(app_meta_files[0], extract_dir)
@@ -162,7 +174,9 @@ class DownloadAndInstallWorker(QThread):
         except URLError as e:
             self.finished.emit(False, f"Download failed: {e}", False)
         except Exception as e:
-            self.finished.emit(False, f"Installation error: {type(e).__name__}: {e}", False)
+            self.finished.emit(
+                False, f"Installation error: {type(e).__name__}: {e}", False
+            )
         finally:
             if temp_dir and temp_dir.exists():
                 shutil.rmtree(temp_dir, ignore_errors=True)
@@ -235,7 +249,9 @@ class DownloadAndInstallWorker(QThread):
                 if app_meta_file.exists():
                     with open(app_meta_file, encoding="utf-8") as f:
                         app_meta = json.load(f)
-                    _normalize_icon_path(app_meta, toolbox_source_dir / child.name, child)
+                    _normalize_icon_path(
+                        app_meta, toolbox_source_dir / child.name, child
+                    )
 
         self.progress.emit(100, "Toolbox installation complete!")
         self.finished.emit(True, toolbox_id, True)
@@ -268,13 +284,19 @@ class LocalInstallWorker(QThread):
             # Check for app
             meta_file = self.source_dir / "app_meta.json"
             if not meta_file.exists():
-                self.finished.emit(False, "No app_meta.json or toolbox_meta.json found in selected folder", False)
+                self.finished.emit(
+                    False,
+                    "No app_meta.json or toolbox_meta.json found in selected folder",
+                    False,
+                )
                 return
 
             self._install_app(meta_file)
 
         except Exception as e:
-            self.finished.emit(False, f"Installation error: {type(e).__name__}: {e}", False)
+            self.finished.emit(
+                False, f"Installation error: {type(e).__name__}: {e}", False
+            )
 
     def _install_app(self, meta_file: Path):
         """Install a single app from local directory."""
