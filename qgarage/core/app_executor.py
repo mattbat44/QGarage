@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class IsolatedAppRun:
-    process: "subprocess.Popen"
+    process: subprocess.Popen
     output_path: Path
     stderr_log_path: Path
     tmp_dir: tempfile.TemporaryDirectory
@@ -31,8 +31,8 @@ TERMINATE_GRACE_SECONDS = 2
 
 
 def start_isolated_app_run(
-    app: "BaseApp",
-    uv_bridge: "UvBridge",
+    app: BaseApp,
+    uv_bridge: UvBridge,
     inputs: dict[str, Any],
     show_console: bool = True,
 ) -> IsolatedAppRun:
@@ -87,8 +87,8 @@ def start_isolated_app_run(
 
 
 def run_app_isolated(
-    app: "BaseApp",
-    uv_bridge: "UvBridge",
+    app: BaseApp,
+    uv_bridge: UvBridge,
     inputs: dict[str, Any],
     show_console: bool = True,
 ) -> dict[str, Any]:
@@ -147,7 +147,7 @@ def run_app_isolated(
         run.tmp_dir.cleanup()
 
 
-def _stop_lingering_process(process: "subprocess.Popen") -> None:
+def _stop_lingering_process(process: subprocess.Popen) -> None:
     """Best-effort shutdown for orphaned runner processes."""
     if process.poll() is not None:
         return

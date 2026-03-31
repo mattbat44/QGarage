@@ -1,4 +1,5 @@
 """Logging utility for QGarage using QGIS message log."""
+
 from qgis.core import Qgis, QgsMessageLog
 
 PLUGIN_NAME = "QGarage"

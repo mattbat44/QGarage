@@ -1,6 +1,7 @@
 import logging
 from typing import Optional
 
+from qgis.gui import QgisInterface, QgsDockWidget
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
@@ -12,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.gui import QgsDockWidget, QgisInterface
 
 from ..core.app_registry import AppEntry, AppRegistry
 from ..themes.theme_manager import ThemeManager

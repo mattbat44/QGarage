@@ -1,11 +1,11 @@
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
 from types import MappingProxyType
+from typing import TYPE_CHECKING, Optional
 
 from .app_loader import AppLoader
 from .app_state import AppHealth
-from .constants import APP_META_FILENAME, TOOLBOX_META_FILENAME, DEFAULT_ENCODING
+from .constants import APP_META_FILENAME, DEFAULT_ENCODING, TOOLBOX_META_FILENAME
 from .logger import log_error, log_info, log_warning
 from .uv_bridge import UvBridge
 
@@ -16,11 +16,13 @@ if TYPE_CHECKING:
 class AppEntry:
     """Container for a single registered app."""
 
-    def __init__(self, app_dir: Path, app_meta: dict, parent_toolbox_id: Optional[str] = None):
+    def __init__(
+        self, app_dir: Path, app_meta: dict, parent_toolbox_id: Optional[str] = None
+    ):
         self.app_dir = app_dir
         self.app_meta = app_meta
         self.health = AppHealth()
-        self.instance: Optional["BaseApp"] = None
+        self.instance: Optional[BaseApp] = None
         self.parent_toolbox_id = parent_toolbox_id
 
     @property
@@ -116,7 +118,7 @@ class AppRegistry:
                     f"Invalid JSON in {meta_file}: {e}",
                     "app_registry",
                 )
-            except (OSError, IOError) as e:
+            except OSError as e:
                 log_error(
                     f"Error reading {meta_file}: {e}",
                     "app_registry",
@@ -124,7 +126,9 @@ class AppRegistry:
 
         return discovered
 
-    def _discover_toolbox(self, toolbox_dir: Path, toolbox_meta_file: Path) -> list[AppEntry]:
+    def _discover_toolbox(
+        self, toolbox_dir: Path, toolbox_meta_file: Path
+    ) -> list[AppEntry]:
         """Discover a toolbox and all its contained apps."""
         discovered: list[AppEntry] = []
         try:
@@ -177,7 +181,10 @@ class AppRegistry:
                         entry = AppEntry(child, app_meta, parent_toolbox_id=toolbox_id)
                         self._entries[app_id] = entry
                         discovered.append(entry)
-                        log_info(f"Discovered app: {app_id} (in toolbox: {toolbox_id})", "app_registry")
+                        log_info(
+                            f"Discovered app: {app_id} (in toolbox: {toolbox_id})",
+                            "app_registry",
+                        )
                     else:
                         entry.app_dir = child
                         entry.app_meta = app_meta
@@ -190,7 +197,7 @@ class AppRegistry:
                         f"Invalid JSON in {app_meta_file}: {e}",
                         "app_registry",
                     )
-                except (OSError, IOError) as e:
+                except OSError as e:
                     log_error(
                         f"Error reading {app_meta_file}: {e}",
                         "app_registry",
@@ -201,7 +208,7 @@ class AppRegistry:
                 f"Invalid JSON in {toolbox_meta_file}: {e}",
                 "app_registry",
             )
-        except (OSError, IOError) as e:
+        except OSError as e:
             log_error(
                 f"Error reading {toolbox_meta_file}: {e}",
                 "app_registry",

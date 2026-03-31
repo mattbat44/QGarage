@@ -1,0 +1,27 @@
+[project]
+name = "qgarage"
+version = "0.1.1"
+description = "A lightweight plugin for QGIS that provides a unified dashboard for installing, managing, and running isolated mini-tools."
+readme = "README.md"
+authors = [
+    { name = "Matt Adams" }
+]
+requires-python = ">=3.9"
+dependencies = []
+
+[tool.ruff]
+line-length = 88
+format.docstring-code-format = true
+lint.select = ["A", "C4", "E4", "E7", "E9", "F", "FLY", "FURB", "I", "PLE", "PT", "RUF", "SIM", "UP"]
+lint.ignore = ["SIM108", "SIM105"]
+lint.per-file-ignores."tests/**" = ["RUF059"]
+lint.per-file-ignores."!tests/**/*.py" = ["PT"]
+
+[tool.uv]
+link-mode = "symlink"
+
+[dependency-groups]
+dev = [
+    "prek>=0.3.8",
+    "ruff>=0.15.8",
+]

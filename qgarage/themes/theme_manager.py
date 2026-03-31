@@ -1,7 +1,7 @@
 from pathlib import Path
 
-from qgis.PyQt.QtWidgets import QApplication
 from qgis.PyQt.QtGui import QPalette
+from qgis.PyQt.QtWidgets import QApplication
 
 from ..core.constants import (
     DARK_THEME_FILE,
