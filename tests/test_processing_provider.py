@@ -3,9 +3,9 @@ from unittest.mock import MagicMock
 from qgarage.core.app_registry import AppEntry, ToolboxEntry
 from qgarage.core.base_app import BaseApp, InputType, OutputType
 from qgarage.core.processing_provider import (
+    SHOW_CONSOLE_PARAM,
     QGarageProcessingAlgorithm,
     QGarageProcessingProvider,
-    SHOW_CONSOLE_PARAM,
 )
 
 

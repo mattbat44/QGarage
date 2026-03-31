@@ -35,6 +35,7 @@ class TestRegistryDiscover:
     def _make_registry(self, apps_dir: Path):
         """Create a registry with a stubbed UvBridge (discovery doesn't need uv)."""
         from unittest.mock import MagicMock
+
         from qgarage.core.app_registry import AppRegistry
 
         mock_uv = MagicMock()

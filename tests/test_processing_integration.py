@@ -4,8 +4,8 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from qgarage.core.base_app import BaseApp, InputType
-from qgarage.processing.parameter_mapper import create_processing_parameter
 from qgarage.processing.algorithm_wrapper import BaseAppAlgorithm
+from qgarage.processing.parameter_mapper import create_processing_parameter
 from qgarage.processing.processing_provider import QGarageProcessingProvider
 
 
@@ -58,8 +58,9 @@ def test_parameter_mapper_string():
 
 def test_parameter_mapper_integer():
     """Test INTEGER input type mapping."""
-    from qgarage.core.base_app import InputSpec
     from qgis.core import QgsProcessingParameterNumber
+
+    from qgarage.core.base_app import InputSpec
 
     spec = InputSpec(
         key="test_int",
@@ -91,7 +92,7 @@ def test_parameter_mapper_boolean():
 
     param = create_processing_parameter(spec)
     assert param.name() == "test_bool"
-    assert param.defaultValue() == True
+    assert param.defaultValue()
 
 
 def test_parameter_mapper_choice():
@@ -159,8 +160,9 @@ def test_algorithm_init_parameters():
 
 def test_processing_provider_filters_dynamic_apps():
     """Test that Processing provider skips dynamic apps."""
-    from qgarage.core.app_registry import AppRegistry
     from unittest.mock import Mock
+
+    from qgarage.core.app_registry import AppRegistry
 
     # Create mock registry with both declarative and dynamic apps
     registry = Mock(spec=AppRegistry)

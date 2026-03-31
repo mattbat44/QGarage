@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any
 
 from qgis.core import (
     QgsProcessingAlgorithm,
@@ -41,7 +41,7 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
         self._registry = registry
         self._entry = entry
 
-    def createInstance(self) -> "QGarageProcessingAlgorithm":
+    def createInstance(self) -> QGarageProcessingAlgorithm:
         return QGarageProcessingAlgorithm(self._registry, self._entry)
 
     def name(self) -> str:
@@ -73,7 +73,7 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
     def tags(self) -> list[str]:
         return list(self._entry.app_meta.get("tags", []))
 
-    def initAlgorithm(self, config: Optional[dict] = None) -> None:
+    def initAlgorithm(self, config: dict | None = None) -> None:
         self.addParameter(
             QgsProcessingParameterBoolean(
                 SHOW_CONSOLE_PARAM,
@@ -150,7 +150,7 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
 
         return outputs
 
-    def _get_app(self) -> Optional[BaseApp]:
+    def _get_app(self) -> BaseApp | None:
         app = self._registry.load_app(self._entry.app_id)
         if app is None or not self._supports_processing(app):
             return None

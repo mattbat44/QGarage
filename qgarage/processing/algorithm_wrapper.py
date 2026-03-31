@@ -2,14 +2,14 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any
 
-from qgis.PyQt.QtCore import QCoreApplication
 from qgis.core import (
     QgsProcessingAlgorithm,
     QgsProcessingContext,
     QgsProcessingFeedback,
 )
+from qgis.PyQt.QtCore import QCoreApplication
 
 from ..core.base_app import BaseApp
 from ..core.settings import get_uv_executable
@@ -124,10 +124,10 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
 
     def processAlgorithm(
         self,
-        parameters: Dict[str, Any],
+        parameters: dict[str, Any],
         context: QgsProcessingContext,
         feedback: QgsProcessingFeedback,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Execute the algorithm.
 
         This creates a BaseApp instance, collects parameter values, and calls
@@ -148,7 +148,9 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         inputs = {}
         for spec in app._input_specs:
             try:
-                value = extract_parameter_value(spec, parameters, spec.key, context, self)
+                value = extract_parameter_value(
+                    spec, parameters, spec.key, context, self
+                )
                 inputs[spec.key] = value
             except Exception as e:
                 logger.warning(
