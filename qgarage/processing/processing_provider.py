@@ -2,9 +2,9 @@
 
 import logging
 
+from qgis.core import QgsProcessingProvider
 from qgis.PyQt.QtCore import QCoreApplication
 from qgis.PyQt.QtGui import QIcon
-from qgis.core import QgsProcessingProvider
 
 from ..core.app_registry import AppRegistry
 from .algorithm_wrapper import BaseAppAlgorithm

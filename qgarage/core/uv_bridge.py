@@ -3,8 +3,9 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Optional
 
 from .constants import REQUIREMENTS_FILENAME, VENV_DIR
 from .logger import log_error, log_info
@@ -46,7 +47,7 @@ def _resolve_uv_executable(requested: str) -> str:
 
     if platform.system() == "Windows":
         extra_dirs = [str(d) for d in _UV_CANDIDATE_DIRS_WIN if d.exists()]
-        augmented_path = os.pathsep.join(extra_dirs + [os.environ.get("PATH", "")])
+        augmented_path = os.pathsep.join([*extra_dirs, os.environ.get("PATH", "")])
         found = shutil.which(requested, path=augmented_path)
         if found:
             log_info(f"Resolved uv via augmented PATH: {found}", "uv_bridge")
@@ -250,7 +251,7 @@ class UvBridge:
     ) -> "subprocess.Popen":
         """Run an app's execute_logic in an isolated uv subprocess.
 
-        Uses the *current* Python interpreter (sys.executable – i.e. QGIS's
+        Uses the *current* Python interpreter (sys.executable - i.e. QGIS's
         Python) so that native packages like GDAL are available without
         reinstallation.
 

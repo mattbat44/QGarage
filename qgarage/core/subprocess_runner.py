@@ -11,8 +11,8 @@ child process that:
     QGIS main thread after the subprocess finishes
 
 Communication between QGIS and the subprocess is via two temp JSON files:
-  inputs.json   – serialised input values
-  output.json   – result dict written by the subprocess when done
+  inputs.json   - serialised input values
+  output.json   - result dict written by the subprocess when done
 The ProcessMonitor QThread polls for output.json so QGIS reacts as soon as
 the script finishes, without blocking the UI.
 """
@@ -38,14 +38,14 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
     """
     try:
         from qgis.core import (
-            QgsVectorLayer,
-            QgsRasterLayer,
             QgsCoordinateReferenceSystem,
-            QgsVectorFileWriter,
             QgsCoordinateTransformContext,
+            QgsRasterLayer,
+            QgsVectorFileWriter,
+            QgsVectorLayer,
         )
     except ImportError:
-        # Already outside QGIS (test context) – pass through unchanged
+        # Already outside QGIS (test context) - pass through unchanged
         return inputs
 
     result: dict[str, Any] = {}
@@ -91,7 +91,7 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
 # Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
 
 RUNNER_SCRIPT = r'''
-"""QGarage isolated app runner – auto-generated, do not edit."""
+"""QGarage isolated app runner - auto-generated, do not edit."""
 import json
 import sys
 import os
@@ -384,7 +384,7 @@ try:
 
     result["__added_layers__"] = _ADDED_LAYERS
 
-    # Write output JSON – QGIS side starts watching for this file
+    # Write output JSON - QGIS side starts watching for this file
     with open(_output_path, "w") as _f:
         json.dump(result, _f)
 
@@ -527,7 +527,11 @@ def wait_for_isolated_app_result(
 ) -> dict[str, Any]:
     """Wait for the shared isolated runner to write its result JSON."""
     while True:
-        if feedback is not None and hasattr(feedback, "isCanceled") and feedback.isCanceled():
+        if (
+            feedback is not None
+            and hasattr(feedback, "isCanceled")
+            and feedback.isCanceled()
+        ):
             if process.poll() is None:
                 process.terminate()
             raise RuntimeError("Execution canceled.")
@@ -542,9 +546,7 @@ def wait_for_isolated_app_result(
                     return json.load(result_file)
 
             detail = read_stderr_log(stderr_log_path)
-            message = (
-                f"Process exited with code {process.returncode} before writing a result."
-            )
+            message = f"Process exited with code {process.returncode} before writing a result."
             if detail:
                 message += f"\n\n{detail}"
             else:

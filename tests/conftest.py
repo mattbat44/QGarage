@@ -13,7 +13,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # Mock the entire qgis package tree before any qgarage module is imported.
 # ---------------------------------------------------------------------------

@@ -1,14 +1,15 @@
+import contextlib
 import json
 import os
 from pathlib import Path
 from typing import Optional
 
+from qgis.core import QgsApplication
+from qgis.gui import QgisInterface
 from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
-from qgis.core import QgsApplication
-from qgis.gui import QgisInterface
 
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
@@ -143,10 +144,8 @@ class QGaragePlugin:
             except Exception:
                 existing = None
         if existing is not None:
-            try:
+            with contextlib.suppress(Exception):
                 registry.removeProvider(existing)
-            except Exception:
-                pass
 
         provider = QGarageProcessingProvider(self.registry, icon_path=icon_path)
         added = False

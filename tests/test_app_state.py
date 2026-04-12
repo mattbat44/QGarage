@@ -1,6 +1,6 @@
 """Tests for AppState enum and AppHealth state machine."""
 
-from qgarage.core.app_state import AppHealth, AppState, MAX_CONSECUTIVE_ERRORS
+from qgarage.core.app_state import MAX_CONSECUTIVE_ERRORS, AppHealth, AppState
 
 
 class TestAppState:

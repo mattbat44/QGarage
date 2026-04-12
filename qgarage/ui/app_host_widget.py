@@ -1,4 +1,4 @@
-from qgis.PyQt.QtCore import pyqtSignal
+from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QPushButton,
@@ -6,7 +6,6 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.PyQt.QtCore import Qt
 
 from ..core.base_app import BaseApp
 

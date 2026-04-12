@@ -111,7 +111,9 @@ class ToolboxCardWidget(QFrame):
         self._apps_container.setVisible(False)
         self._apps_container.setMaximumHeight(0)
 
-        self._apps_animation = QPropertyAnimation(self._apps_container, b"maximumHeight", self)
+        self._apps_animation = QPropertyAnimation(
+            self._apps_container, b"maximumHeight", self
+        )
         self._apps_animation.setDuration(180)
         self._apps_animation.setEasingCurve(QEasingCurve.Type.InOutCubic)
         self._apps_animation.finished.connect(self._on_apps_animation_finished)
@@ -134,7 +136,9 @@ class ToolboxCardWidget(QFrame):
 
     def _build_icon(self) -> QLabel:
         """Build the icon widget from toolbox_meta icon_path, or a coloured fallback."""
-        icon_path_value = (self.toolbox_entry.toolbox_meta.get("icon_path") or "").strip()
+        icon_path_value = (
+            self.toolbox_entry.toolbox_meta.get("icon_path") or ""
+        ).strip()
         if icon_path_value:
             resolved = self.toolbox_entry.toolbox_dir / icon_path_value
             if resolved.is_file():
@@ -177,7 +181,9 @@ class ToolboxCardWidget(QFrame):
         self._header_frame.style().polish(self._header_frame)
 
         target_height = self._apps_container.sizeHint().height()
-        current_height = self._apps_container.height() or self._apps_container.maximumHeight()
+        current_height = (
+            self._apps_container.height() or self._apps_container.maximumHeight()
+        )
         self._apps_animation.stop()
 
         if not animate:
@@ -213,7 +219,9 @@ class ToolboxCardWidget(QFrame):
     def _on_header_clicked(self, event):
         """Toggle expansion when the header background is clicked."""
         if event.button() == Qt.MouseButton.LeftButton:
-            click_pos = event.pos() if hasattr(event, "pos") else event.position().toPoint()
+            click_pos = (
+                event.pos() if hasattr(event, "pos") else event.position().toPoint()
+            )
             if not self._expand_button.geometry().contains(click_pos):
                 self._toggle_expanded()
                 event.accept()

@@ -1,10 +1,25 @@
+import logging
 from abc import ABC
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from pathlib import Path
 from typing import Any, Optional
-import logging
 
+from qgis.core import (
+    QgsCoordinateReferenceSystem,
+    QgsMapLayerProxyModel,
+    QgsProject,
+    QgsRasterLayer,
+    QgsVectorLayer,
+)
+from qgis.gui import (
+    QgsFieldComboBox,
+    QgsFileWidget,
+    QgsMapLayerComboBox,
+    QgsProjectionSelectionWidget,
+)
+from qgis.PyQt.QtCore import QObject, pyqtSignal
+from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -23,24 +38,9 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qgis.PyQt.QtCore import QObject, pyqtSignal
-from qgis.PyQt.QtGui import QIcon
-from qgis.gui import (
-    QgsFieldComboBox,
-    QgsFileWidget,
-    QgsMapLayerComboBox,
-    QgsProjectionSelectionWidget,
-)
-from qgis.core import (
-    QgsCoordinateReferenceSystem,
-    QgsMapLayerProxyModel,
-    QgsProject,
-    QgsRasterLayer,
-    QgsVectorLayer,
-)
 
 from .app_state import AppHealth
-from .settings import get_uv_executable, ParameterCache
+from .settings import ParameterCache, get_uv_executable
 from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge
 
@@ -144,8 +144,14 @@ class BaseApp(ABC):
             def __init__(self, **kwargs):
                 super().__init__(**kwargs)
                 self.add_input("dem", "DEM Layer", InputType.RASTER_LAYER)
-                self.add_input("threshold", "Threshold", InputType.FLOAT,
-                               default=10.0, min_value=0, max_value=1000)
+                self.add_input(
+                    "threshold",
+                    "Threshold",
+                    InputType.FLOAT,
+                    default=10.0,
+                    min_value=0,
+                    max_value=1000,
+                )
 
             def execute_logic(self, inputs):
                 dem = inputs["dem"]
@@ -211,15 +217,20 @@ class BaseApp(ABC):
                 super().__init__(**kwargs)
                 self.add_input("input_layer", "Input", InputType.VECTOR_LAYER)
                 self.add_output("feature_count", "Feature Count", OutputType.INTEGER)
-                self.add_output("output_file", "Output File", OutputType.FILE,
-                               description="Path to the generated output file")
+                self.add_output(
+                    "output_file",
+                    "Output File",
+                    OutputType.FILE,
+                    description="Path to the generated output file",
+                )
+
 
             def execute_logic(self, inputs):
                 count = inputs["input_layer"].featureCount()
                 return {
                     "status": "success",
                     "feature_count": count,
-                    "output_file": "/path/to/output.geojson"
+                    "output_file": "/path/to/output.geojson",
                 }
         """
         spec = OutputSpec(key=key, label=label, output_type=output_type, **kwargs)
@@ -470,9 +481,7 @@ class BaseApp(ABC):
 
             if spec.input_type == InputType.STRING:
                 values[spec.key] = w.text()
-            elif spec.input_type == InputType.INTEGER:
-                values[spec.key] = w.value()
-            elif spec.input_type == InputType.FLOAT:
+            elif spec.input_type in (InputType.INTEGER, InputType.FLOAT):
                 values[spec.key] = w.value()
             elif spec.input_type == InputType.BOOLEAN:
                 values[spec.key] = w.isChecked()
@@ -709,7 +718,7 @@ class BaseApp(ABC):
         )
         self._tmp_dir = launch["tmp_dir"]
 
-        # Start monitor thread – polls for output.json, signals us when done
+        # Start monitor thread - polls for output.json, signals us when done
         self._monitor = ProcessMonitor(
             launch["process"],
             launch["output_path"],
@@ -834,20 +843,24 @@ class BaseApp(ABC):
             logger.warning(
                 "add_output_layer called before widget was built — adding directly"
             )
-            self._add_layer_to_project({
+            self._add_layer_to_project(
+                {
+                    "source": str(source),
+                    "name": name or Path(source).stem,
+                    "provider": provider,
+                    "layer_type": layer_type,
+                }
+            )
+            return
+
+        self._layer_bridge.layer_requested.emit(
+            {
                 "source": str(source),
                 "name": name or Path(source).stem,
                 "provider": provider,
                 "layer_type": layer_type,
-            })
-            return
-
-        self._layer_bridge.layer_requested.emit({
-            "source": str(source),
-            "name": name or Path(source).stem,
-            "provider": provider,
-            "layer_type": layer_type,
-        })
+            }
+        )
 
     def get_project(self) -> QgsProject:
         """Convenience accessor for the current QGIS project."""

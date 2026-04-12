@@ -13,8 +13,8 @@ import pytest
 
 from qgarage.core.constants import (
     APP_META_FILENAME,
-    DEFAULT_ENTRY_POINT,
     DEFAULT_CLASS_NAME,
+    DEFAULT_ENTRY_POINT,
 )
 
 # ---------------------------------------------------------------------------
@@ -219,7 +219,7 @@ class TestAppClassValidation:
         assert validate_app_class(d) == []
 
     def test_missing_class(self, make_app_dir):
-        meta = {**dict(id="bad_class", name="Bad", class_name="DoesNotExist")}
+        meta = {**{"id": "bad_class", "name": "Bad", "class_name": "DoesNotExist"}}
         d = make_app_dir(meta, main_py="x = 1\n")
         errors = validate_app_class(d)
         assert any("not found" in e for e in errors)
