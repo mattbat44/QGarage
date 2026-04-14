@@ -23,3 +23,7 @@ Thumbs.db
 # App venvs (each app manages its own)
 qgarage/apps/*/.venv/
 
+# Pixi environments (per-app)
+qgarage/apps/*/.pixi/
+*.pixi/
+

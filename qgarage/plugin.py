@@ -13,7 +13,7 @@ from qgis.PyQt.QtWidgets import QAction
 
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
-from .core.settings import get_uv_executable
+from .core.settings import get_pixi_executable, get_uv_executable
 from .core.uv_bridge import UvBridge
 from .processing.processing_provider import QGarageProcessingProvider
 from .ui.dashboard_dock import DashboardDock
@@ -34,6 +34,7 @@ class QGaragePlugin:
         self.registry: Optional[AppRegistry] = None
         self.processing_provider: Optional[QGarageProcessingProvider] = None
         self.uv_bridge: Optional[UvBridge] = None
+        self.pixi_bridge = None
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -55,8 +56,16 @@ class QGaragePlugin:
             log_error(f"uv not available: {e}")
             self.uv_bridge = None
 
-        if self.uv_bridge is not None:
-            self.registry = AppRegistry(APPS_DIR, self.uv_bridge)
+        try:
+            from .core.pixi_bridge import PixiBridge
+
+            self.pixi_bridge = PixiBridge(get_pixi_executable())
+        except RuntimeError as e:
+            log_error(f"pixi not available: {e}")
+            self.pixi_bridge = None
+
+        if self.uv_bridge is not None or self.pixi_bridge is not None:
+            self.registry = AppRegistry(APPS_DIR, self.uv_bridge, self.pixi_bridge)
             self.registry.discover()
             self.registry.load_all()
 
@@ -103,6 +112,7 @@ class QGaragePlugin:
             self.action = None
 
         self.uv_bridge = None
+        self.pixi_bridge = None
 
     def _provider_is_alive(self) -> bool:
         provider = self.processing_provider

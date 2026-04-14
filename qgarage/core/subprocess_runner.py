@@ -451,9 +451,14 @@ def launch_isolated_app_run(
     inputs: dict[str, Any],
     uv_bridge,
     *,
+    bridge=None,
     keep_open: bool = True,
 ) -> dict[str, Any]:
-    """Prepare and launch an app in the shared uv-isolated runner."""
+    """Prepare and launch an app in the shared isolated runner.
+
+    Accepts either ``bridge`` (preferred) or ``uv_bridge`` (legacy).
+    """
+    active_bridge = bridge if bridge is not None else uv_bridge
     import qgarage
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="qgarage_run_")
@@ -472,7 +477,7 @@ def launch_isolated_app_run(
 
     plugin_dir = Path(qgarage.__file__).parent
     requirements_path = app_dir / "requirements.txt"
-    venv_site_packages = uv_bridge.get_site_packages(app_dir)
+    venv_site_packages = active_bridge.get_site_packages(app_dir)
     config = {
         "inputs_path": str(inputs_path),
         "output_path": str(output_path),
@@ -486,7 +491,7 @@ def launch_isolated_app_run(
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    process = uv_bridge.launch_app_isolated(
+    process = active_bridge.launch_app_isolated(
         runner_path=runner_path,
         config_path=config_path,
         requirements_path=requirements_path if requirements_path.exists() else None,

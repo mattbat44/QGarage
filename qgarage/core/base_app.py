@@ -40,7 +40,8 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .app_state import AppHealth
-from .settings import ParameterCache, get_uv_executable
+from .env_bridge import EnvBridge, resolve_bridge_for_app
+from .settings import ParameterCache, get_pixi_executable, get_uv_executable
 from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge
 
@@ -172,6 +173,7 @@ class BaseApp(ABC):
         self._progress_bar: Optional[QProgressBar] = None
         self._run_button: Optional[QPushButton] = None
         self._uv_bridge: Optional[UvBridge] = None
+        self._bridge: Optional[EnvBridge] = None
         self._monitor: Optional[ProcessMonitor] = None
         self._tmp_dir: Optional[Any] = None  # tempfile.TemporaryDirectory
         self._layer_bridge: Optional[_LayerBridge] = None
@@ -708,12 +710,13 @@ class BaseApp(ABC):
                 self._health.state = AppState.READY
 
     def _launch_isolated(self, inputs: dict) -> None:
-        """Serialise inputs, write runner+config, spawn uv run --isolated."""
+        """Serialise inputs, write runner+config, spawn isolated subprocess."""
         launch = launch_isolated_app_run(
             app_dir=self.app_dir,
             app_meta=self.app_meta,
             inputs=inputs,
-            uv_bridge=self._get_uv_bridge(),
+            uv_bridge=None,
+            bridge=self._get_bridge(),
             keep_open=True,
         )
         self._tmp_dir = launch["tmp_dir"]
@@ -843,24 +846,20 @@ class BaseApp(ABC):
             logger.warning(
                 "add_output_layer called before widget was built — adding directly"
             )
-            self._add_layer_to_project(
-                {
-                    "source": str(source),
-                    "name": name or Path(source).stem,
-                    "provider": provider,
-                    "layer_type": layer_type,
-                }
-            )
-            return
-
-        self._layer_bridge.layer_requested.emit(
-            {
+            self._add_layer_to_project({
                 "source": str(source),
                 "name": name or Path(source).stem,
                 "provider": provider,
                 "layer_type": layer_type,
-            }
-        )
+            })
+            return
+
+        self._layer_bridge.layer_requested.emit({
+            "source": str(source),
+            "name": name or Path(source).stem,
+            "provider": provider,
+            "layer_type": layer_type,
+        })
 
     def get_project(self) -> QgsProject:
         """Convenience accessor for the current QGIS project."""
@@ -909,3 +908,16 @@ class BaseApp(ABC):
         if self._uv_bridge is None:
             self._uv_bridge = UvBridge(get_uv_executable())
         return self._uv_bridge
+
+    def _get_bridge(self) -> EnvBridge:
+        """Return the appropriate environment bridge for this app."""
+        if self._bridge is None:
+            from .constants import PIXI_TOML_FILENAME
+
+            if (self.app_dir / PIXI_TOML_FILENAME).exists():
+                from .pixi_bridge import PixiBridge
+
+                self._bridge = PixiBridge(get_pixi_executable())
+            else:
+                self._bridge = self._get_uv_bridge()
+        return self._bridge

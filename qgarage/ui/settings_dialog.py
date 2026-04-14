@@ -7,7 +7,7 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
-from ..core.settings import get_uv_executable, set_setting
+from ..core.settings import get_pixi_executable, get_uv_executable, set_setting
 
 
 class SettingsDialog(QDialog):
@@ -30,6 +30,10 @@ class SettingsDialog(QDialog):
         self._uv_path_input.setPlaceholderText("uv")
         form.addRow("uv executable:", self._uv_path_input)
 
+        self._pixi_path_input = QLineEdit()
+        self._pixi_path_input.setPlaceholderText("pixi")
+        form.addRow("pixi executable:", self._pixi_path_input)
+
         layout.addLayout(form)
 
         save_btn = QPushButton("Save")
@@ -41,9 +45,15 @@ class SettingsDialog(QDialog):
 
     def _load_settings(self):
         self._uv_path_input.setText(get_uv_executable())
+        self._pixi_path_input.setText(get_pixi_executable())
 
     def _save_settings(self):
         uv_path = self._uv_path_input.text().strip()
         if uv_path:
             set_setting("uv_executable", uv_path)
+
+        pixi_path = self._pixi_path_input.text().strip()
+        if pixi_path:
+            set_setting("pixi_executable", pixi_path)
+
         self._status_label.setText("Settings saved. Restart QGIS to apply changes.")

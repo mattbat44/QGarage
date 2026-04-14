@@ -137,6 +137,11 @@ class UvBridge:
                 "Install from https://docs.astral.sh/uv/"
             )
 
+    def ensure_env(self, app_dir: Path) -> None:
+        """Create a venv and install requirements (idempotent)."""
+        self.create_venv(app_dir)
+        self.install_requirements(app_dir)
+
     def create_venv(self, app_dir: Path) -> Path:
         """Create an isolated venv inside an app directory.
 

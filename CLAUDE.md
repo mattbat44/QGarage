@@ -13,7 +13,9 @@ QGarage is a modular app-hosting framework for QGIS (3.28+ / 4.0). It provides a
 - `qgarage/plugin.py` — QGIS plugin entry (initGui/unload), wires all components
 - `qgarage/core/base_app.py` — BaseApp ABC with declarative `add_input()` + `execute_logic()`
 - `qgarage/core/app_loader.py` — Dynamic importlib loading with try/except fault isolation
+- `qgarage/core/env_bridge.py` — EnvBridge Protocol + `resolve_bridge_for_app()` factory
 - `qgarage/core/uv_bridge.py` — uv venv creation, pip install, SysPathContext for sys.path injection
+- `qgarage/core/pixi_bridge.py` — pixi environment management, `pixi run` subprocess launch
 - `qgarage/core/app_registry.py` — Discovers apps in `qgarage/apps/`, tracks AppEntry + AppHealth
 - `qgarage/processing/processing_provider.py` — QgsProcessingProvider that registers declarative apps
 - `qgarage/processing/algorithm_wrapper.py` — Wraps BaseApp as QgsProcessingAlgorithm
@@ -27,8 +29,9 @@ QGarage is a modular app-hosting framework for QGIS (3.28+ / 4.0). It provides a
 ### Conventions
 - All Qt imports via `qgis.PyQt` (never `PyQt5`/`PyQt6` directly) for QGIS 3.x/4.0 compat
 - QSS applied at widget level only (never QApplication global)
-- Each app gets its own `.venv/` managed by `uv`
-- App contract: `app_meta.json` + `main.py` (BaseApp subclass) + `requirements.txt`
+- Each app gets its own `.venv/` (uv) or `.pixi/` (pixi) environment
+- App contract: `app_meta.json` + `main.py` (BaseApp subclass) + `requirements.txt` or `pixi.toml`
+- Dual-backend: apps with `pixi.toml` use pixi; apps with only `requirements.txt` use uv (auto-detected)
 - Declarative apps (with `add_input()` + `execute_logic()`) automatically appear in both the dashboard and Processing Toolbox
 - Dynamic apps (with `build_dynamic_widget()`) only appear in the dashboard, not in Processing
 
@@ -98,7 +101,7 @@ qgarage/apps/my_tool/
 - `entry_point` is always `main.py` unless there is a specific reason to change it.
 - `icon_path` is optional; if provided, the icon file is copied into the plugin directory on install.
 
-### requirements.txt
+### requirements.txt (uv backend)
 
 List pure-Python dependencies only. Do NOT list:
 
@@ -107,6 +110,45 @@ List pure-Python dependencies only. Do NOT list:
 - `numpy` — typically bundled with QGIS
 
 Dependencies are **NOT installed at app install time**. They are resolved at runtime by `uv run --isolated --with-requirements requirements.txt` each time the app executes. This keeps installation instant and avoids polluting the environment.
+
+### pixi.toml (pixi backend — conda ecosystem)
+
+If your app needs **compiled packages from conda-forge** (e.g. scipy, rasterio, GDAL with specific builds), use a `pixi.toml` instead of `requirements.txt`. When QGarage finds a `pixi.toml` in an app directory it automatically uses pixi instead of uv for that app.
+
+```toml
+[project]
+name = "my_tool"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.10,<3.13"
+# Conda packages (compiled C/C++ extensions):
+gdal = ">=3.6"
+scipy = "*"
+numpy = "*"
+
+[pypi-dependencies]
+# Pure-Python packages from PyPI:
+requests = ">=2.28"
+```
+
+**Key differences from the uv backend:**
+
+| | uv (`requirements.txt`) | pixi (`pixi.toml`) |
+|---|---|---|
+| Python interpreter | QGIS's bundled Python | pixi's own Python |
+| GDAL, numpy, etc. | Available for free (from QGIS) | Must be declared in `[dependencies]` |
+| Compiled packages | Not supported (pip wheels only) | Full conda-forge access |
+| Environment location | `.venv/` in app dir | `.pixi/envs/default/` in app dir |
+| Dependency resolution | Ephemeral (each run) | Persistent (first `pixi install`, then cached) |
+
+**When to use pixi vs uv:**
+
+- Use **uv** (default) when your app only needs pure-Python packages and QGIS's bundled libraries.
+- Use **pixi** when your app needs compiled packages not bundled with QGIS (scipy, specific GDAL builds, rasterio, etc.).
+
+**Important:** With pixi, QGIS's bundled packages are **NOT** available in `execute_logic()`. Everything your app needs must be declared in `pixi.toml`. This is the trade-off for gaining access to the full conda-forge ecosystem.
 
 ### Replacing an Existing App
 
@@ -317,7 +359,9 @@ class MyDynamicApp(BaseApp):
 2. Framework calls `validate_inputs()` on the main thread.
 3. Inputs are serialized: QGIS layers → GeoJSON exports + metadata dicts; primitives pass through.
 4. A temp directory is created with `inputs.json`, `runner.py`, `config.json`.
-5. `uv run --isolated --python <python.exe> runner.py config.json` is launched in a **new console window**.
+5. The framework auto-detects the backend:
+   - **uv apps** (have `requirements.txt`): `uv run --isolated --python <python.exe> --with-requirements requirements.txt runner.py config.json`
+   - **pixi apps** (have `pixi.toml`): `pixi run --manifest-path <pixi.toml> python runner.py config.json`
 6. The runner script stubs all `qgis.*` modules, deserializes inputs, imports your app class, and calls `execute_logic(inputs)`.
 7. `self.log()` calls become `print()` — visible live in the console.
 8. The result dict is written to `output.json`.
@@ -568,9 +612,14 @@ class DemSlopeApp(BaseApp):
 - [ ] There are no syntax errors (run `python -m py_compile main.py` to check).
 - [ ] No code at module level calls Qt or QGIS APIs — only plain Python.
 
-### 4. (Optional) Create `requirements.txt`
+### 4. (Optional) Create `requirements.txt` or `pixi.toml`
 
-Only needed if your app uses packages not bundled with QGIS. Leave the file empty or omit it if you have no extra dependencies.
+Only needed if your app uses packages not bundled with QGIS.
+
+- Use `requirements.txt` for pure-Python packages (resolved by uv at runtime).
+- Use `pixi.toml` for compiled conda-forge packages (scipy, GDAL, etc.). See the pixi.toml section above for the format.
+- If both files exist, `pixi.toml` takes precedence.
+- Leave the file empty or omit it if you have no extra dependencies.
 
 ### 5. Deploy and reload
 
@@ -637,7 +686,9 @@ The subprocess launch itself failed.
 | Cause                                            | Fix                                               |
 | ------------------------------------------------ | ------------------------------------------------- |
 | `uv` not found or not configured                 | Check QGarage settings — the `uv` path must be valid |
+| `pixi` not found or not configured               | Check QGarage settings — the `pixi` path must be valid |
 | `requirements.txt` lists an unresolvable package | Remove or fix the broken dependency               |
+| `pixi.toml` has invalid syntax or bad dependency | Run `pixi install --manifest-path pixi.toml` manually to diagnose |
 
 ---
 
