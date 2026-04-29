@@ -177,6 +177,13 @@ class PixiBridge:
         ]
 
         launch_env = os.environ.copy()
+        # Strip Python-specific env vars that poison subprocesses
+        for var in (
+            "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP",
+            "PYTHONCASEOK", "PYTHONIOENCODING", "PYTHONFAULTHANDLER"
+        ):
+            launch_env.pop(var, None)
+
         if venv_site_packages:
             existing = launch_env.get("PYTHONPATH", "")
             launch_env["PYTHONPATH"] = (

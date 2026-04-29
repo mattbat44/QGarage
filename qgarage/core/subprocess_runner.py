@@ -91,6 +91,7 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
 # Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
 
 RUNNER_SCRIPT = r'''
+
 """QGarage isolated app runner - auto-generated, do not edit."""
 import json
 import sys
@@ -99,6 +100,27 @@ import shutil
 import traceback as _tb_mod
 from pathlib import Path
 from unittest.mock import MagicMock
+
+# --- Conda DLL registration and rasterio .libs workaround (Windows only) ---
+if sys.platform == "win32":
+    _conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    if _conda_prefix:
+        for _subdir in ("Library/bin", "Library/mingw-w64/bin", "Library/usr/bin"):
+            _dll_path = os.path.join(_conda_prefix, _subdir)
+            if os.path.isdir(_dll_path):
+                os.add_dll_directory(_dll_path)
+
+    import importlib.util as _ilu
+    _rasterio_spec = _ilu.find_spec("rasterio")
+    if _rasterio_spec and _rasterio_spec.submodule_search_locations:
+        # rasterio/__init__.py scans PATH for gdal*.dll if no .libs dir exists.
+        # With QGIS directories still on PATH, it finds QGIS's older GDAL and
+        # registers it, causing version-mismatch DLL failures. Creating an empty
+        # .libs sentinel makes rasterio skip the PATH scan entirely.
+        os.makedirs(
+            os.path.join(list(_rasterio_spec.submodule_search_locations)[0], ".libs"),
+            exist_ok=True
+        )
 
 # ── Output path from config (resolved early for crash handling) ───────────────
 # We need this available at module scope so the outer try/except can always
