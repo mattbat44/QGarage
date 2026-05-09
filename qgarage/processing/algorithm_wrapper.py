@@ -12,7 +12,8 @@ from qgis.core import (
 from qgis.PyQt.QtCore import QCoreApplication
 
 from ..core.base_app import BaseApp
-from ..core.settings import get_uv_executable
+from ..core.env_bridge import EnvBridge
+from ..core.settings import get_pixi_executable, get_uv_executable
 from ..core.subprocess_runner import (
     launch_isolated_app_run,
     wait_for_isolated_app_result,
@@ -45,6 +46,7 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         self.app_class = app_class
         self._app_instance: BaseApp | None = None
         self._uv_bridge: UvBridge | None = None
+        self._bridge: EnvBridge | None = None
 
     def _get_app_instance(self) -> BaseApp:
         """Get or create the BaseApp instance.
@@ -57,6 +59,19 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         if self._uv_bridge is None:
             self._uv_bridge = UvBridge(get_uv_executable())
         return self._uv_bridge
+
+    def _get_bridge(self) -> EnvBridge:
+        """Return the appropriate environment bridge for this app."""
+        if self._bridge is None:
+            from ..core.constants import PIXI_TOML_FILENAME
+
+            if (self.app_dir / PIXI_TOML_FILENAME).exists():
+                from ..core.pixi_bridge import PixiBridge
+
+                self._bridge = PixiBridge(get_pixi_executable())
+            else:
+                self._bridge = self._get_uv_bridge()
+        return self._bridge
 
     def tr(self, string: str) -> str:
         """Translate a string using Qt translation functions."""
@@ -168,13 +183,14 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
         # Report progress
         feedback.pushInfo(f"Running {self.displayName()}...")
 
-        # Execute the app's logic in the app's isolated uv environment
+        # Execute the app's logic in the app's isolated environment
         try:
             launch = launch_isolated_app_run(
                 app_dir=self.app_dir,
                 app_meta=self.app_meta,
                 inputs=inputs,
-                uv_bridge=self._get_uv_bridge(),
+                uv_bridge=None,
+                bridge=self._get_bridge(),
                 keep_open=False,
             )
             try:

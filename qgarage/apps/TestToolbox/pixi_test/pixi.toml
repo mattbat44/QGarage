@@ -1,0 +1,13 @@
+[project]
+name = "pixi-test"
+version = "0.1.0"
+description = "Test pixi app with niche conda dependency"
+authors = ["Test User <test@example.com>"]
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+glymur = "0.13.*"
+
+[pypi-dependencies]

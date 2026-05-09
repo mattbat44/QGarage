@@ -13,12 +13,13 @@ from qgis.PyQt.QtWidgets import QAction
 
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
-from .core.settings import get_uv_executable
+from .core.settings import get_pixi_executable, get_uv_executable
 from .core.uv_bridge import UvBridge
 from .processing.processing_provider import QGarageProcessingProvider
 from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
+from .workers.env_setup_worker import EnvSetupWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
 APPS_DIR = Path(PLUGIN_DIR) / "apps"
@@ -34,6 +35,8 @@ class QGaragePlugin:
         self.registry: Optional[AppRegistry] = None
         self.processing_provider: Optional[QGarageProcessingProvider] = None
         self.uv_bridge: Optional[UvBridge] = None
+        self.pixi_bridge = None
+        self._env_workers: dict[str, EnvSetupWorker] = {}
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -55,8 +58,16 @@ class QGaragePlugin:
             log_error(f"uv not available: {e}")
             self.uv_bridge = None
 
-        if self.uv_bridge is not None:
-            self.registry = AppRegistry(APPS_DIR, self.uv_bridge)
+        try:
+            from .core.pixi_bridge import PixiBridge
+
+            self.pixi_bridge = PixiBridge(get_pixi_executable())
+        except RuntimeError as e:
+            log_error(f"pixi not available: {e}")
+            self.pixi_bridge = None
+
+        if self.uv_bridge is not None or self.pixi_bridge is not None:
+            self.registry = AppRegistry(APPS_DIR, self.uv_bridge, self.pixi_bridge)
             self.registry.discover()
             self.registry.load_all()
 
@@ -76,6 +87,8 @@ class QGaragePlugin:
 
     def unload(self):
         """Called by QGIS when the plugin is unloaded."""
+        self._stop_env_workers()
+
         # Unregister Processing provider
         self._remove_processing_provider()
 
@@ -103,6 +116,15 @@ class QGaragePlugin:
             self.action = None
 
         self.uv_bridge = None
+        self.pixi_bridge = None
+        self._env_workers.clear()
+
+    def _stop_env_workers(self) -> None:
+        for worker in self._env_workers.values():
+            try:
+                worker.wait()
+            except RuntimeError:
+                continue
 
     def _provider_is_alive(self) -> bool:
         provider = self.processing_provider
@@ -202,6 +224,10 @@ class QGaragePlugin:
             # Re-discover to pick up the new/updated toolbox
             self.registry.discover()
             self.dock.refresh_cards()
+            toolbox_entry = self.registry.toolbox_entries.get(item_id)
+            if toolbox_entry is not None:
+                for app_entry in toolbox_entry.app_entries.values():
+                    self._prepare_app_environment_async(app_entry)
         else:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
@@ -217,16 +243,63 @@ class QGaragePlugin:
                 app_meta = json.load(f)
             entry = AppEntry(APPS_DIR / item_id, app_meta)
             self.registry.register_entry(entry)
-            self.registry.load_app(item_id)
             self.dock.add_card(entry)
+            self._prepare_app_environment_async(entry)
 
-        # Ensure provider is present and refreshed after install/reinstall.
-        self._refresh_processing_provider()
+    def _prepare_app_environment_async(self, entry: AppEntry) -> None:
+        if self.registry is None or self.dock is None:
+            return
+
+        entry.health.reset()
+        from .core.app_state import AppState
+
+        entry.health.state = AppState.INSTALLING
+        self.dock.update_card_state(entry.app_id)
+
+        existing = self._env_workers.pop(entry.app_id, None)
+        if existing is not None:
+            existing.quit()
+            existing.wait()
+
+        try:
+            bridge = self.registry.get_bridge_for_app(entry.app_dir)
+        except Exception as exc:
+            entry.health.record_error(str(exc))
+            self.dock.update_card_state(entry.app_id)
+            return
+
+        worker = EnvSetupWorker(entry.app_id, entry.app_dir, bridge, parent=self.dock)
+        worker.setup_finished.connect(self._on_env_setup_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._env_workers[entry.app_id] = worker
+        worker.start()
+
+    def _on_env_setup_finished(self, app_id: str, success: bool, error_text: str) -> None:
+        if self.registry is None or self.dock is None:
+            self._env_workers.pop(app_id, None)
+            return
+
+        self._env_workers.pop(app_id, None)
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        if success:
+            self.registry.load_app(app_id)
+            self._refresh_processing_provider()
+        else:
+            entry.health.record_error(error_text)
+
+        self.dock.update_card_state(app_id)
 
     def _on_new_app_requested(self):
         dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
-        dialog.app_created.connect(lambda app_id: self._on_app_installed(app_id, False))
+        dialog.app_created.connect(self._on_app_scaffolded)
         dialog.exec()
+
+    def _on_app_scaffolded(self, app_id: str, install_now: bool):
+        if install_now:
+            self._on_app_installed(app_id, False)
 
     def _refresh_processing_provider(self) -> None:
         if self.registry is None:

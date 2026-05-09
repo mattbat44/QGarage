@@ -13,7 +13,7 @@ class {{class_name}}(BaseApp):
         layer = inputs["input_layer"]
         output_path = inputs["output_path"]
 
-        # Optional: launch external logic in isolated uv env + separate console.
+        # Optional: launch external logic in the app's configured environment.
         # Example:
         # pid = self.run_uv_isolated(
         #     command=["python", "-m", "my_tool", "--out", output_path],

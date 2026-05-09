@@ -50,3 +50,9 @@ DEFAULT_SPACING = 8
 # Settings keys
 SETTING_UV_EXECUTABLE = "uv_executable"
 DEFAULT_UV_EXECUTABLE = "uv"
+SETTING_PIXI_EXECUTABLE = "pixi_executable"
+DEFAULT_PIXI_EXECUTABLE = "pixi"
+
+# Pixi
+PIXI_TOML_FILENAME = "pixi.toml"
+PIXI_ENV_DIR = ".pixi"

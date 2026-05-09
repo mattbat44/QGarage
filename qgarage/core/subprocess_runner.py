@@ -91,6 +91,7 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
 # Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
 
 RUNNER_SCRIPT = r'''
+
 """QGarage isolated app runner - auto-generated, do not edit."""
 import json
 import sys
@@ -99,6 +100,27 @@ import shutil
 import traceback as _tb_mod
 from pathlib import Path
 from unittest.mock import MagicMock
+
+# --- Conda DLL registration and rasterio .libs workaround (Windows only) ---
+if sys.platform == "win32":
+    _conda_prefix = os.environ.get("CONDA_PREFIX", "")
+    if _conda_prefix:
+        for _subdir in ("Library/bin", "Library/mingw-w64/bin", "Library/usr/bin"):
+            _dll_path = os.path.join(_conda_prefix, _subdir)
+            if os.path.isdir(_dll_path):
+                os.add_dll_directory(_dll_path)
+
+    import importlib.util as _ilu
+    _rasterio_spec = _ilu.find_spec("rasterio")
+    if _rasterio_spec and _rasterio_spec.submodule_search_locations:
+        # rasterio/__init__.py scans PATH for gdal*.dll if no .libs dir exists.
+        # With QGIS directories still on PATH, it finds QGIS's older GDAL and
+        # registers it, causing version-mismatch DLL failures. Creating an empty
+        # .libs sentinel makes rasterio skip the PATH scan entirely.
+        os.makedirs(
+            os.path.join(list(_rasterio_spec.submodule_search_locations)[0], ".libs"),
+            exist_ok=True
+        )
 
 # ── Output path from config (resolved early for crash handling) ───────────────
 # We need this available at module scope so the outer try/except can always
@@ -451,9 +473,14 @@ def launch_isolated_app_run(
     inputs: dict[str, Any],
     uv_bridge,
     *,
+    bridge=None,
     keep_open: bool = True,
 ) -> dict[str, Any]:
-    """Prepare and launch an app in the shared uv-isolated runner."""
+    """Prepare and launch an app in the shared isolated runner.
+
+    Accepts either ``bridge`` (preferred) or ``uv_bridge`` (legacy).
+    """
+    active_bridge = bridge if bridge is not None else uv_bridge
     import qgarage
 
     tmp_dir = tempfile.TemporaryDirectory(prefix="qgarage_run_")
@@ -472,7 +499,7 @@ def launch_isolated_app_run(
 
     plugin_dir = Path(qgarage.__file__).parent
     requirements_path = app_dir / "requirements.txt"
-    venv_site_packages = uv_bridge.get_site_packages(app_dir)
+    venv_site_packages = active_bridge.get_site_packages(app_dir)
     config = {
         "inputs_path": str(inputs_path),
         "output_path": str(output_path),
@@ -486,7 +513,7 @@ def launch_isolated_app_run(
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    process = uv_bridge.launch_app_isolated(
+    process = active_bridge.launch_app_isolated(
         runner_path=runner_path,
         config_path=config_path,
         requirements_path=requirements_path if requirements_path.exists() else None,

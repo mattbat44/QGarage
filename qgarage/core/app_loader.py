@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from .base_app import BaseApp
 
 from .app_state import AppHealth, AppState
+from .env_bridge import EnvBridge, resolve_bridge_for_app
 from .uv_bridge import SysPathContext, UvBridge
 
 logger = logging.getLogger("qgarage.app_loader")
@@ -18,8 +19,13 @@ logger = logging.getLogger("qgarage.app_loader")
 class AppLoader:
     """Loads app modules dynamically with full fault isolation."""
 
-    def __init__(self, uv_bridge: UvBridge):
+    def __init__(
+        self,
+        uv_bridge: Optional[UvBridge] = None,
+        pixi_bridge=None,
+    ):
         self.uv_bridge = uv_bridge
+        self.pixi_bridge = pixi_bridge
         self._loaded_modules: dict[str, object] = {}
 
     def load_app(
@@ -34,7 +40,8 @@ class AppLoader:
         health.state = AppState.LOADING
 
         try:
-            site_packages = self.uv_bridge.get_site_packages(app_dir)
+            bridge = resolve_bridge_for_app(app_dir, self.pixi_bridge, self.uv_bridge)
+            site_packages = bridge.get_site_packages(app_dir)
 
             with SysPathContext(site_packages):
                 entry_point = app_dir / app_meta.get("entry_point", "main.py")

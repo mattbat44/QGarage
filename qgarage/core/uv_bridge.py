@@ -137,6 +137,11 @@ class UvBridge:
                 "Install from https://docs.astral.sh/uv/"
             )
 
+    def ensure_env(self, app_dir: Path) -> None:
+        """Create a venv and install requirements (idempotent)."""
+        self.create_venv(app_dir)
+        self.install_requirements(app_dir)
+
     def create_venv(self, app_dir: Path) -> Path:
         """Create an isolated venv inside an app directory.
 
@@ -147,13 +152,17 @@ class UvBridge:
             log_info(f"Venv already exists at {venv_path}", "uv_bridge")
             return self._site_packages_path(venv_path)
 
-        subprocess.run(
-            [self.uv_exe, "venv", str(venv_path)],
-            check=True,
-            capture_output=True,
-            text=True,
-            creationflags=_CREATE_NO_WINDOW,
-        )
+        try:
+            subprocess.run(
+                [self.uv_exe, "venv", str(venv_path)],
+                check=True,
+                capture_output=True,
+                text=True,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
+            raise RuntimeError(f"Failed to create uv venv:\n{error_msg}") from e
         log_info(f"Created venv at {venv_path}", "uv_bridge")
         return self._site_packages_path(venv_path)
 
@@ -176,21 +185,25 @@ class UvBridge:
             )
             return
 
-        subprocess.run(
-            [
-                self.uv_exe,
-                "pip",
-                "install",
-                "-r",
-                str(req_file),
-                "--python",
-                str(self._python_exe(venv_path)),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            creationflags=_CREATE_NO_WINDOW,
-        )
+        try:
+            subprocess.run(
+                [
+                    self.uv_exe,
+                    "pip",
+                    "install",
+                    "-r",
+                    str(req_file),
+                    "--python",
+                    str(self._python_exe(venv_path)),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
+            raise RuntimeError(f"Failed to install requirements:\n{error_msg}") from e
         log_info(f"Installed requirements for {app_dir.name}", "uv_bridge")
 
     def launch_uvx_windowed(

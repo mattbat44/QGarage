@@ -38,7 +38,7 @@ def test_run_app_isolated_stops_lingering_process(monkeypatch, tmp_path):
     fake_process = FakeProcess(poll_values=[None])
     temp_dir = tempfile.TemporaryDirectory()
 
-    def fake_start(app, uv_bridge, inputs, show_console=True):
+    def fake_start(app, uv_bridge=None, inputs=None, show_console=True, *, bridge=None):
         return IsolatedAppRun(
             process=cast(Any, fake_process),
             output_path=output_path,
@@ -66,7 +66,7 @@ def test_run_app_isolated_times_out_without_output(monkeypatch, tmp_path):
     fake_process = FakeProcess(poll_values=[None, None, None])
     temp_dir = tempfile.TemporaryDirectory()
 
-    def fake_start(app, uv_bridge, inputs, show_console=True):
+    def fake_start(app, uv_bridge=None, inputs=None, show_console=True, *, bridge=None):
         return IsolatedAppRun(
             process=cast(Any, fake_process),
             output_path=tmp_path / "missing_output.json",

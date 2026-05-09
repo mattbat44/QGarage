@@ -24,6 +24,10 @@ def get_uv_executable() -> str:
     return get_setting("uv_executable", "uv")
 
 
+def get_pixi_executable() -> str:
+    return get_setting("pixi_executable", "pixi")
+
+
 class ParameterCache:
     """Persist and recall per-app parameter values via QgsSettings.
 

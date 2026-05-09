@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     import subprocess
 
     from .base_app import BaseApp
+    from .env_bridge import EnvBridge
     from .uv_bridge import UvBridge
 
 
@@ -32,11 +33,17 @@ TERMINATE_GRACE_SECONDS = 2
 
 def start_isolated_app_run(
     app: BaseApp,
-    uv_bridge: UvBridge,
-    inputs: dict[str, Any],
+    uv_bridge: UvBridge = None,
+    inputs: dict[str, Any] = None,
     show_console: bool = True,
+    *,
+    bridge: EnvBridge = None,
 ) -> IsolatedAppRun:
-    """Prepare and launch an isolated subprocess for an app run."""
+    """Prepare and launch an isolated subprocess for an app run.
+
+    Accepts either ``bridge`` (preferred) or ``uv_bridge`` (legacy).
+    """
+    active_bridge = bridge if bridge is not None else uv_bridge
     tmp_dir = tempfile.TemporaryDirectory(prefix="qgarage_run_")
     tmp_path = Path(tmp_dir.name)
 
@@ -55,7 +62,7 @@ def start_isolated_app_run(
 
     plugin_dir = Path(qgarage.__file__).parent
     requirements_path = app.app_dir / "requirements.txt"
-    venv_site_packages = uv_bridge.get_site_packages(app.app_dir)
+    venv_site_packages = active_bridge.get_site_packages(app.app_dir)
 
     config = {
         "inputs_path": str(inputs_path),
@@ -69,7 +76,7 @@ def start_isolated_app_run(
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
-    process = uv_bridge.launch_app_isolated(
+    process = active_bridge.launch_app_isolated(
         runner_path=runner_path,
         config_path=config_path,
         requirements_path=requirements_path if requirements_path.exists() else None,
@@ -88,12 +95,16 @@ def start_isolated_app_run(
 
 def run_app_isolated(
     app: BaseApp,
-    uv_bridge: UvBridge,
-    inputs: dict[str, Any],
+    uv_bridge: UvBridge = None,
+    inputs: dict[str, Any] = None,
     show_console: bool = True,
+    *,
+    bridge: EnvBridge = None,
 ) -> dict[str, Any]:
     """Run an app to completion in an isolated subprocess and return its result."""
-    run = start_isolated_app_run(app, uv_bridge, inputs, show_console=show_console)
+    run = start_isolated_app_run(
+        app, uv_bridge, inputs, show_console=show_console, bridge=bridge
+    )
     try:
         start_time = time.monotonic()
         while True:

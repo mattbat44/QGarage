@@ -1,0 +1,13 @@
+{
+    "name": "Hello World Pixi",
+    "id": "hello_world_pixi",
+    "version": "1.0.0",
+    "author": "QGarage",
+    "description": "A simple test app that demonstrates the QGarage framework using Pixi",
+    "entry_point": "main.py",
+    "class_name": "HelloWorldApp",
+    "tags": [
+        "demo",
+        "test"
+    ]
+}
