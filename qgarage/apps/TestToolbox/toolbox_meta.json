@@ -1,0 +1,9 @@
+{
+  "name": "TestToolbox",
+  "id": "test_toolbox",
+  "version": "1.0.0",
+  "author": "QGarage Core",
+  "description": "Tools for testing the QGarage framework",
+  "icon_path": "",
+  "tags": ["testing"]
+}

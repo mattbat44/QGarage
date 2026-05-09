@@ -158,7 +158,7 @@ class TestAppLoaderBridgeResolution:
             health,
         )
 
-        pixi.ensure_env.assert_called_once_with(app_dir)
+        pixi.ensure_env.assert_not_called()
         uv.ensure_env.assert_not_called()
 
     def test_loader_uses_uv_for_requirements_only_app(self, tmp_path):
@@ -207,5 +207,5 @@ class TestAppLoaderBridgeResolution:
             health,
         )
 
-        uv.ensure_env.assert_called_once_with(app_dir)
+        uv.ensure_env.assert_not_called()
         pixi.ensure_env.assert_not_called()

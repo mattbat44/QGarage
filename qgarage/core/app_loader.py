@@ -41,7 +41,6 @@ class AppLoader:
 
         try:
             bridge = resolve_bridge_for_app(app_dir, self.pixi_bridge, self.uv_bridge)
-            bridge.ensure_env(app_dir)
             site_packages = bridge.get_site_packages(app_dir)
 
             with SysPathContext(site_packages):

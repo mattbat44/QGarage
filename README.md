@@ -5,8 +5,8 @@ A lightweight plugin for QGIS (3.28+) that provides a unified dashboard for inst
 ## ✨ Key Features
 
 - **📦 Modular App System** — Install and manage multiple self-contained tools from a single dashboard
-- **🔒 Process Isolation** — Each app runs in its own subprocess with a clean Python environment (via `uv`)
-- **⚡ Zero-Install Dependencies** — Python packages are resolved at runtime; no pre-installation overhead
+- **🔒 Process Isolation** — Each app runs in its own subprocess with a clean per-app environment (`uv` or `pixi`)
+- **⚡ Flexible Dependency Backends** — Use `uv` for pure-Python apps or `pixi` for conda-forge and compiled dependencies
 - **🎨 Auto-Generated UI** — Declarative input system automatically creates professional Qt forms
 - **🎯 Simplified Development** — Write a `BaseApp` subclass with `add_input()` + `execute_logic()` — no QGIS boilerplate needed
 - **🔧 Dynamic Mode** — For advanced use cases, build custom multi-step wizards and interactive tools
@@ -20,13 +20,19 @@ A lightweight plugin for QGIS (3.28+) that provides a unified dashboard for inst
 
 - **QGIS** 3.28 or later (including QGIS 4.0)
 - **Python** 3.10+ (included with QGIS)
-- **uv** — Fast Python package manager ([installation](https://github.com/astral-sh/uv))
-  - On Windows: `python -m pip install uv` or download from [uv releases](https://github.com/astral-sh/uv/releases)
-  - On Windows with PowerShell: `.\install-qgarage-plugin.ps1` detects and configures uv automatically
+- **uv** — Required for apps that ship a `requirements.txt` ([installation](https://github.com/astral-sh/uv))
+- **pixi** — Required for apps that ship a `pixi.toml` and need conda-forge or compiled packages ([installation](https://pixi.sh))
+
+QGarage selects the backend per app:
+
+- **uv apps** use `requirements.txt` and are a good fit for pure-Python dependencies
+- **pixi apps** use `pixi.toml` and are a good fit for compiled packages such as GDAL builds, `scipy`, `rasterio`, or niche conda-forge packages
 
 ## 🚀 Installation
 
-Use the QGIS Plugin Manager and install the latest version of QGarage
+Install QGarage from the **QGIS Plugin Manager** / QGIS plugins repository.
+
+For plugin users, that is the primary installation path. The local install scripts in this repository are for development and testing only.
 
 ## 📖 Quick Start
 
@@ -69,7 +75,7 @@ See [Creating Your First App](#creating-your-first-app) below.
 └─────────────────────────────────────────────┘
            ↓ (launches)
 ┌─────────────────────────────────────────────┐
-│   App Subprocess (uv run --isolated)        │
+│   App Subprocess (uv or pixi)               │
 │                                             │
 │  Business Logic | QGIS Stubs | File I/O   │
 │                                             │
@@ -85,7 +91,8 @@ See [Creating Your First App](#creating-your-first-app) below.
 | `qgarage/core/base_app.py`         | Abstract base class for all apps (`add_input()` + `execute_logic()`) |
 | `qgarage/core/app_registry.py`     | Discovers, loads, and tracks app health                |
 | `qgarage/core/app_loader.py`       | Dynamic import with fault isolation                    |
-| `qgarage/core/uv_bridge.py`        | Manages `uv` venv creation and subprocess execution    |
+| `qgarage/core/uv_bridge.py`        | Manages per-app `uv` environments and subprocess execution |
+| `qgarage/core/pixi_bridge.py`      | Manages per-app `pixi` environments and subprocess execution |
 | `qgarage/processing/processing_provider.py` | QGIS Processing framework provider for QGarage apps |
 | `qgarage/processing/algorithm_wrapper.py` | Wraps BaseApp as QgsProcessingAlgorithm |
 | `qgarage/ui/dashboard_dock.py`     | Main QgsDockWidget with app card grid                  |
@@ -182,7 +189,31 @@ class HelloWorldApp(BaseApp):
 # Leave empty if your app uses only standard library + QGIS
 ```
 
+#### 4. `pixi.toml` (optional alternative to `requirements.txt`)
+
+Use this instead of `requirements.txt` when the app needs compiled or conda-forge dependencies:
+
+```toml
+[project]
+name = "hello-world"
+channels = ["conda-forge"]
+platforms = ["win-64", "linux-64", "osx-64", "osx-arm64"]
+
+[dependencies]
+python = ">=3.11,<3.13"
+scipy = "*"
+```
+
+Use only one backend definition per app in normal development:
+
+- Add `requirements.txt` for a `uv` app
+- Add `pixi.toml` for a `pixi` app
+
 ### Deploy & Run
+
+For normal use, install QGarage from the QGIS plugins repository.
+
+For local development of this repository:
 
 ```powershell
 .\install-qgarage-plugin.ps1
@@ -351,13 +382,19 @@ The declarative system supports these input types:
 
 ### Subprocess Isolation
 
-Each app's `execute_logic()` runs in a **separate Python process** via `uv run --isolated`:
+Each app's `execute_logic()` runs in a **separate Python process** via the backend selected for that app:
 
 - **Inputs** are serialized to `inputs.json` (layers → GeoJSON exports)
 - **Outputs** are written to `output.json` and read back on the main thread
 - **QGIS objects are stubbed** — you get lightweight shims, not live QGIS APIs
 - **Progress is live** — `self.log()` calls appear in real time in a subprocess console window
 - **No blocking** — the QGIS main thread remains responsive
+
+Backend selection rules:
+
+- **uv**: app directory contains `requirements.txt`
+- **pixi**: app directory contains `pixi.toml`
+- If both are present, `pixi` takes precedence
 
 ### Parameter Caching & History
 
@@ -432,6 +469,7 @@ qgarage/
 │   ├── app_registry.py                 # App discovery & loading
 │   ├── app_loader.py                   # Dynamic import with error handling
 │   ├── uv_bridge.py                    # uv venv/subprocess management
+│   ├── pixi_bridge.py                  # pixi env/subprocess management
 │   ├── subprocess_runner.py            # Subprocess execution & communication
 │   ├── settings.py                     # QgsSettings integration
 │   ├── logger.py                       # Logging utilities
@@ -510,7 +548,7 @@ def execute_logic(self, inputs):
 
 ### Working with GDAL
 
-Since the subprocess uses QGIS's Python interpreter, GDAL/OSGeo4W libraries are available:
+For `uv` apps, the subprocess uses QGIS's Python interpreter, so GDAL/OSGeo4W libraries are available out of the box. For `pixi` apps, declare every required package in `pixi.toml`, including packages that QGIS normally bundles for `uv`-backed runs.
 
 ```python
 def execute_logic(self, inputs):
@@ -546,8 +584,8 @@ def execute_logic(self, inputs):
 
 ### Subprocess window never appears or closes immediately
 
-1. Check that `uv` is installed and configured in QGarage settings
-2. Verify `requirements.txt` contains only resolvable pure-Python packages
+1. Check that the backend required by the app is installed and configured in QGarage settings (`uv` for `requirements.txt`, `pixi` for `pixi.toml`)
+2. Verify the app's dependency file is valid and resolvable (`requirements.txt` for `uv`, `pixi.toml` for `pixi`)
 3. Look for errors in the QGIS Python Console
 
 ### Layer inputs return `None`

@@ -109,18 +109,22 @@ class PixiBridge:
             )
             return
 
-        subprocess.run(
-            [
-                self.pixi_exe,
-                "install",
-                "--manifest-path",
-                str(manifest),
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            creationflags=_CREATE_NO_WINDOW,
-        )
+        try:
+            subprocess.run(
+                [
+                    self.pixi_exe,
+                    "install",
+                    "--manifest-path",
+                    str(manifest),
+                ],
+                check=True,
+                capture_output=True,
+                text=True,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        except subprocess.CalledProcessError as e:
+            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
+            raise RuntimeError(f"Failed to install pixi environment:\n{error_msg}") from e
         log_info(f"Pixi environment ready for {app_dir.name}", "pixi_bridge")
 
     def get_site_packages(self, app_dir: Path) -> Optional[str]:
