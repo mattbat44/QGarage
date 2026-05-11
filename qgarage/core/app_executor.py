@@ -7,7 +7,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .subprocess_runner import RUNNER_SCRIPT, serialize_inputs
+from .subprocess_runner import (
+    RUNNER_SCRIPT,
+    build_isolated_run_config,
+    serialize_inputs,
+)
 
 if TYPE_CHECKING:
     import subprocess
@@ -64,16 +68,16 @@ def start_isolated_app_run(
     requirements_path = app.app_dir / "requirements.txt"
     venv_site_packages = active_bridge.get_site_packages(app.app_dir)
 
-    config = {
-        "inputs_path": str(inputs_path),
-        "output_path": str(output_path),
-        "plugin_dir": str(plugin_dir),
-        "app_dir": str(app.app_dir),
-        "module_path": str(app.app_dir / app.app_meta.get("entry_point", "main.py")),
-        "class_name": app.app_meta.get("class_name", "App"),
-        "app_meta": dict(app.app_meta),
-        "stderr_log_path": str(stderr_log_path),
-    }
+    config = build_isolated_run_config(
+        app_dir=app.app_dir,
+        app_meta=app.app_meta,
+        plugin_dir=plugin_dir,
+        inputs_path=inputs_path,
+        output_path=output_path,
+        stderr_log_path=stderr_log_path,
+        keep_open=show_console,
+        app_instance=app,
+    )
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     process = active_bridge.launch_app_isolated(

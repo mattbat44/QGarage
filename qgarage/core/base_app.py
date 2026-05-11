@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
@@ -718,6 +720,7 @@ class BaseApp(ABC):
             uv_bridge=None,
             bridge=self._get_bridge(),
             keep_open=True,
+            app_instance=self,
         )
         self._tmp_dir = launch["tmp_dir"]
 

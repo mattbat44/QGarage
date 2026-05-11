@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import json
 import os
@@ -9,7 +11,7 @@ from qgis.gui import QgisInterface
 from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QMessageBox, QProgressDialog
 
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error
@@ -20,6 +22,7 @@ from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
 from .workers.env_setup_worker import EnvSetupWorker
+from .workers.package_manager_install_worker import PackageManagerInstallWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
 APPS_DIR = Path(PLUGIN_DIR) / "apps"
@@ -37,6 +40,9 @@ class QGaragePlugin:
         self.uv_bridge: Optional[UvBridge] = None
         self.pixi_bridge = None
         self._env_workers: dict[str, EnvSetupWorker] = {}
+        self._package_manager_worker: Optional[PackageManagerInstallWorker] = None
+        self._package_manager_progress: Optional[QProgressDialog] = None
+        self._pending_package_managers: tuple[str, ...] = ()
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -52,11 +58,13 @@ class QGaragePlugin:
         self.iface.addPluginToMenu("&QGarage", self.action)
 
         # Initialize core
+        missing_package_managers: list[str] = []
         try:
             self.uv_bridge = UvBridge(get_uv_executable())
         except RuntimeError as e:
             log_error(f"uv not available: {e}")
             self.uv_bridge = None
+            missing_package_managers.append("uv")
 
         try:
             from .core.pixi_bridge import PixiBridge
@@ -65,6 +73,10 @@ class QGaragePlugin:
         except RuntimeError as e:
             log_error(f"pixi not available: {e}")
             self.pixi_bridge = None
+            missing_package_managers.append("pixi")
+
+        if missing_package_managers:
+            self._prompt_install_package_managers(missing_package_managers)
 
         if self.uv_bridge is not None or self.pixi_bridge is not None:
             self.registry = AppRegistry(APPS_DIR, self.uv_bridge, self.pixi_bridge)
@@ -118,6 +130,9 @@ class QGaragePlugin:
         self.uv_bridge = None
         self.pixi_bridge = None
         self._env_workers.clear()
+        self._package_manager_worker = None
+        self._package_manager_progress = None
+        self._pending_package_managers = ()
 
     def _stop_env_workers(self) -> None:
         for worker in self._env_workers.values():
@@ -201,6 +216,70 @@ class QGaragePlugin:
     def _toggle_dock(self, checked: bool):
         if self.dock is not None:
             self.dock.setVisible(checked)
+
+    def _prompt_install_package_managers(self, package_managers: list[str]) -> None:
+        readable = ", ".join(package_managers)
+        dialog = QMessageBox(self.iface.mainWindow())
+        dialog.setIcon(QMessageBox.Icon.Warning)
+        dialog.setWindowTitle("Missing Package Managers")
+        dialog.setText(f"QGarage could not find: {readable}.")
+        dialog.setInformativeText(
+            "Install the missing package manager tools now? You will need to restart QGIS after installation completes."
+        )
+        install_button = dialog.addButton("Install", QMessageBox.ButtonRole.AcceptRole)
+        dialog.addButton("Later", QMessageBox.ButtonRole.RejectRole)
+        dialog.exec()
+        if dialog.clickedButton() == install_button:
+            self._start_package_manager_install(package_managers)
+
+    def _start_package_manager_install(self, package_managers: list[str]) -> None:
+        if self._package_manager_worker is not None and self._package_manager_worker.isRunning():
+            return
+
+        self._pending_package_managers = tuple(package_managers)
+        self._package_manager_progress = QProgressDialog(
+            f"Installing {', '.join(package_managers)}...",
+            "",
+            0,
+            0,
+            self.iface.mainWindow(),
+        )
+        self._package_manager_progress.setWindowTitle("Installing Package Managers")
+        self._package_manager_progress.setCancelButton(None)
+        self._package_manager_progress.setWindowModality(Qt.WindowModality.ApplicationModal)
+        self._package_manager_progress.setMinimumDuration(0)
+        self._package_manager_progress.show()
+
+        worker = PackageManagerInstallWorker(package_managers, parent=self.iface.mainWindow())
+        worker.install_finished.connect(self._on_package_manager_install_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._package_manager_worker = worker
+        worker.start()
+
+    def _on_package_manager_install_finished(self, success: bool, details: str) -> None:
+        if self._package_manager_progress is not None:
+            self._package_manager_progress.close()
+            self._package_manager_progress.deleteLater()
+            self._package_manager_progress = None
+
+        installed = ", ".join(self._pending_package_managers)
+        self._package_manager_worker = None
+
+        if success:
+            QMessageBox.information(
+                self.iface.mainWindow(),
+                "Restart Required",
+                f"Finished installing {installed}. Restart QGIS to load the new package manager executables.",
+            )
+        else:
+            message = details or "The installer exited with an error."
+            QMessageBox.critical(
+                self.iface.mainWindow(),
+                "Installation Failed",
+                f"Could not install {installed}.\n\n{message}",
+            )
+
+        self._pending_package_managers = ()
 
     def _on_install_requested(self):
         dialog = InstallDialog(APPS_DIR, self.iface.mainWindow())

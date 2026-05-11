@@ -22,10 +22,31 @@ from __future__ import annotations
 import json
 import tempfile
 import time
+from dataclasses import asdict, is_dataclass
+from enum import Enum
 from pathlib import Path
 from typing import Any
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
+
+from .constants import PIXI_TOML_FILENAME
+
+_APP_STATE_EXCLUDED_ATTRS = {
+    "_bridge",
+    "_health",
+    "_history_btn",
+    "_history_menu",
+    "_input_widgets",
+    "_layer_bridge",
+    "_monitor",
+    "_output_area",
+    "_param_cache",
+    "_progress_bar",
+    "_run_button",
+    "_tmp_dir",
+    "_uv_bridge",
+    "_widget",
+}
 
 # ── Input serialisation ───────────────────────────────────────────────────────
 
@@ -87,6 +108,82 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
     return result
 
 
+def _serialize_app_state_value(value: Any) -> Any:
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return value
+    if isinstance(value, Path):
+        return {"__qgarage_type__": "path", "value": str(value)}
+    if isinstance(value, Enum):
+        return {
+            "__qgarage_type__": "enum",
+            "enum_class": type(value).__name__,
+            "member": value.name,
+        }
+    if is_dataclass(value):
+        return {
+            "__qgarage_type__": "dataclass",
+            "class_name": type(value).__name__,
+            "fields": {
+                key: _serialize_app_state_value(item)
+                for key, item in asdict(value).items()
+            },
+        }
+    if isinstance(value, dict):
+        return {
+            str(key): _serialize_app_state_value(item) for key, item in value.items()
+        }
+    if isinstance(value, (list, tuple)):
+        return [_serialize_app_state_value(item) for item in value]
+    if isinstance(value, set):
+        return sorted(_serialize_app_state_value(item) for item in value)
+    raise TypeError(f"Unsupported app state value: {type(value)!r}")
+
+
+def build_app_state_snapshot(app_instance: Any) -> dict[str, Any]:
+    """Return a JSON-friendly snapshot of app state needed by execute_logic()."""
+    snapshot: dict[str, Any] = {}
+    for key, value in vars(app_instance).items():
+        if key in _APP_STATE_EXCLUDED_ATTRS:
+            continue
+        try:
+            snapshot[key] = _serialize_app_state_value(value)
+        except TypeError:
+            continue
+    return snapshot
+
+
+def build_isolated_run_config(
+    *,
+    app_dir: Path,
+    app_meta: dict[str, Any],
+    plugin_dir: Path,
+    inputs_path: Path,
+    output_path: Path,
+    stderr_log_path: Path,
+    keep_open: bool,
+    app_instance: Any = None,
+) -> dict[str, Any]:
+    """Build the config payload consumed by the isolated runner."""
+    config: dict[str, Any] = {
+        "inputs_path": str(inputs_path),
+        "output_path": str(output_path),
+        "plugin_dir": str(plugin_dir),
+        "app_dir": str(app_dir),
+        "module_path": str(app_dir / app_meta.get("entry_point", "main.py")),
+        "class_name": app_meta.get("class_name", "App"),
+        "app_meta": dict(app_meta),
+        "stderr_log_path": str(stderr_log_path),
+        "keep_open": keep_open,
+        "import_paths": [str(app_dir), str(plugin_dir.parent)],
+    }
+
+    if app_instance is not None and (app_dir / PIXI_TOML_FILENAME).exists():
+        config["skip_subclass_init"] = True
+        config["app_state"] = build_app_state_snapshot(app_instance)
+
+    return config
+
+
 # ── Embedded runner script ────────────────────────────────────────────────────
 # Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
 
@@ -128,6 +225,50 @@ if sys.platform == "win32":
 _output_path = None
 _stderr_log_file = None
 _keep_open = True
+
+
+def _decode_app_state(value):
+    if isinstance(value, list):
+        return [_decode_app_state(item) for item in value]
+    if not isinstance(value, dict):
+        return value
+
+    marker = value.get("__qgarage_type__")
+    if marker == "path":
+        return Path(value["value"])
+    if marker == "enum":
+        from qgarage.core.base_app import InputType, OutputType
+
+        enum_types = {
+            "InputType": InputType,
+            "OutputType": OutputType,
+        }
+        enum_type = enum_types.get(value.get("enum_class"))
+        if enum_type is None:
+            return value.get("member")
+        return enum_type[value["member"]]
+    if marker == "dataclass":
+        from qgarage.core.base_app import InputSpec, OutputSpec
+
+        dataclass_types = {
+            "InputSpec": InputSpec,
+            "OutputSpec": OutputSpec,
+        }
+        dataclass_type = dataclass_types.get(value.get("class_name"))
+        fields = {
+            key: _decode_app_state(item)
+            for key, item in value.get("fields", {}).items()
+        }
+        if dataclass_type is None:
+            return fields
+        return dataclass_type(**fields)
+
+    return {key: _decode_app_state(item) for key, item in value.items()}
+
+
+def _restore_app_state(app, state):
+    for key, value in state.items():
+        setattr(app, key, _decode_app_state(value))
 
 
 def _safe_print(*args, **kwargs):
@@ -369,10 +510,11 @@ try:
 
     # ── sys.path setup ────────────────────────────────────────────────────────
 
-    # Make qgarage package importable (for BaseApp, InputType, etc.)
-    sys.path.insert(0, str(plugin_dir.parent))
-    # Make the app dir importable (for any local imports in the app)
-    sys.path.insert(0, str(app_dir))
+    import_paths = cfg.get("import_paths") or [str(app_dir), str(plugin_dir.parent)]
+    for import_path in reversed(import_paths):
+        if import_path in sys.path:
+            sys.path.remove(import_path)
+        sys.path.insert(0, import_path)
 
     # ── Import and instantiate the app ────────────────────────────────────────
 
@@ -383,7 +525,14 @@ try:
     sys.modules[_spec.name] = _mod
     _spec.loader.exec_module(_mod)
     AppClass = getattr(_mod, class_name)
-    app = AppClass(app_meta=app_meta, app_dir=app_dir)
+    if cfg.get("skip_subclass_init"):
+        from qgarage.core.base_app import BaseApp
+
+        app = AppClass.__new__(AppClass)
+        BaseApp.__init__(app, app_meta=app_meta, app_dir=app_dir)
+        _restore_app_state(app, cfg.get("app_state", {}))
+    else:
+        app = AppClass(app_meta=app_meta, app_dir=app_dir)
 
     # Redirect app.log() to _safe_print so output appears live in the console
     app.log          = lambda msg: _safe_print(msg, flush=True)
@@ -475,6 +624,7 @@ def launch_isolated_app_run(
     *,
     bridge=None,
     keep_open: bool = True,
+    app_instance: Any = None,
 ) -> dict[str, Any]:
     """Prepare and launch an app in the shared isolated runner.
 
@@ -500,17 +650,16 @@ def launch_isolated_app_run(
     plugin_dir = Path(qgarage.__file__).parent
     requirements_path = app_dir / "requirements.txt"
     venv_site_packages = active_bridge.get_site_packages(app_dir)
-    config = {
-        "inputs_path": str(inputs_path),
-        "output_path": str(output_path),
-        "plugin_dir": str(plugin_dir),
-        "app_dir": str(app_dir),
-        "module_path": str(app_dir / app_meta.get("entry_point", "main.py")),
-        "class_name": app_meta.get("class_name", "App"),
-        "app_meta": dict(app_meta),
-        "stderr_log_path": str(stderr_log_path),
-        "keep_open": keep_open,
-    }
+    config = build_isolated_run_config(
+        app_dir=app_dir,
+        app_meta=app_meta,
+        plugin_dir=plugin_dir,
+        inputs_path=inputs_path,
+        output_path=output_path,
+        stderr_log_path=stderr_log_path,
+        keep_open=keep_open,
+        app_instance=app_instance,
+    )
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     process = active_bridge.launch_app_isolated(
