@@ -33,6 +33,7 @@ jobs:
       - name: Setup dependencies
         run: |
           uv sync $CI_UV_UPGRADE_ARG
+          uv add pytest-md pytest-emoji
         env:
           CI_UV_UPGRADE_ARG: ${{ matrix.dependencies == 'max' && '--upgrade' || '' }}
           UV_RESOLUTION: ${{ matrix.dependencies == 'min' && 'lowest-direct' || 'highest' }}
