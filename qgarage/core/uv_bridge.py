@@ -30,7 +30,52 @@ def _wrap_windowed_command(
         return list(command)
 
     quoted = subprocess.list2cmdline(list(command))
-    return ["cmd.exe", "/c", f"{quoted} || pause"]
+    return ["cmd.exe", "/d", "/s", "/c", f'"{quoted} || pause"']
+
+
+def _normalize_ssl_cert_dir(value: str) -> str | None:
+    """Return a cleaned SSL_CERT_DIR value, or None if it is invalid."""
+    cleaned = value.strip().strip('"')
+    if not cleaned:
+        return None
+
+    cert_dirs = [part.strip().strip('"') for part in cleaned.split(os.pathsep)]
+    cert_dirs = [part for part in cert_dirs if part]
+    if not cert_dirs:
+        return None
+
+    if all(Path(part).is_dir() for part in cert_dirs):
+        return os.pathsep.join(cert_dirs)
+    return None
+
+
+def _build_subprocess_env(
+    *,
+    env: Optional[Mapping[str, str]] = None,
+    venv_site_packages: Optional[str] = None,
+) -> dict[str, str]:
+    """Build a subprocess environment for uv child processes."""
+    launch_env = os.environ.copy()
+    if env:
+        launch_env.update({k: str(v) for k, v in env.items()})
+
+    if platform.system() == "Windows" and "SSL_CERT_DIR" in launch_env:
+        normalized = _normalize_ssl_cert_dir(launch_env["SSL_CERT_DIR"])
+        if normalized is None:
+            launch_env.pop("SSL_CERT_DIR", None)
+            log_info("Removed invalid SSL_CERT_DIR from uv subprocess env", "uv_bridge")
+        else:
+            launch_env["SSL_CERT_DIR"] = normalized
+
+    if venv_site_packages:
+        existing = launch_env.get("PYTHONPATH", "")
+        launch_env["PYTHONPATH"] = (
+            venv_site_packages + os.pathsep + existing
+            if existing
+            else venv_site_packages
+        )
+
+    return launch_env
 
 
 def _resolve_uv_executable(requested: str) -> str:
@@ -128,6 +173,7 @@ class UvBridge:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                env=_build_subprocess_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
             log_info(f"uv version: {result.stdout.strip()}", "uv_bridge")
@@ -158,6 +204,7 @@ class UvBridge:
                 check=True,
                 capture_output=True,
                 text=True,
+                env=_build_subprocess_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
@@ -199,6 +246,7 @@ class UvBridge:
                 check=True,
                 capture_output=True,
                 text=True,
+                env=_build_subprocess_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
@@ -294,14 +342,7 @@ class UvBridge:
 
         cmd += [str(runner_path), str(config_path)]
 
-        launch_env = os.environ.copy()
-        if venv_site_packages:
-            existing = launch_env.get("PYTHONPATH", "")
-            launch_env["PYTHONPATH"] = (
-                venv_site_packages + os.pathsep + existing
-                if existing
-                else venv_site_packages
-            )
+        launch_env = _build_subprocess_env(venv_site_packages=venv_site_packages)
 
         if platform.system() == "Windows":
             creationflags = _CREATE_NEW_CONSOLE if show_window else _CREATE_NO_WINDOW
@@ -329,9 +370,7 @@ class UvBridge:
         cwd: Optional[Path] = None,
         env: Optional[Mapping[str, str]] = None,
     ) -> int:
-        launch_env = os.environ.copy()
-        if env:
-            launch_env.update({k: str(v) for k, v in env.items()})
+        launch_env = _build_subprocess_env(env=env)
 
         if platform.system() == "Windows":
             process = subprocess.Popen(
