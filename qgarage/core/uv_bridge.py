@@ -34,7 +34,12 @@ def _wrap_windowed_command(
 
 
 def _normalize_ssl_cert_dir(value: str) -> str | None:
-    """Return a cleaned SSL_CERT_DIR value, or None if it is invalid."""
+    """Return a normalized SSL_CERT_DIR value, or None when it is unusable.
+
+    Accepts a single directory or an ``os.pathsep``-delimited directory list,
+    trims surrounding whitespace/quotes, and rejects empty or non-existent
+    entries.
+    """
     cleaned = value.strip().strip('"')
     if not cleaned:
         return None

@@ -1,6 +1,7 @@
 """Tests for UvBridge Windows launch quoting and SSL env sanitization."""
 
 import json
+import os
 import subprocess
 from unittest.mock import MagicMock, patch
 
@@ -49,9 +50,9 @@ def test_normalize_ssl_cert_dir_accepts_existing_directories(tmp_path):
     certs_a.mkdir()
     certs_b.mkdir()
 
-    value = f'"{certs_a}"{subprocess.os.pathsep}"{certs_b}"'
+    value = f'"{certs_a}"{os.pathsep}"{certs_b}"'
 
-    assert _normalize_ssl_cert_dir(value) == f"{certs_a}{subprocess.os.pathsep}{certs_b}"
+    assert _normalize_ssl_cert_dir(value) == f"{certs_a}{os.pathsep}{certs_b}"
 
 
 def test_build_subprocess_env_drops_invalid_ssl_cert_dir(tmp_path):
