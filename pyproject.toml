@@ -25,6 +25,5 @@ link-mode = "symlink"
 [dependency-groups]
 dev = [
     "prek>=0.3.8",
-    "pyright",
     "ruff>=0.15.8",
 ]
