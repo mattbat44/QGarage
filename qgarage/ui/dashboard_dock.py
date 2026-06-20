@@ -47,9 +47,14 @@ class DashboardDock(QgsDockWidget):
         self._build_ui()
         ThemeManager.apply_to_widget(self)
 
-    def set_registry(self, registry: AppRegistry):
+    def set_registry(self, registry: AppRegistry | None):
         """Set the app registry and populate the card grid."""
         self._registry = registry
+        if registry is None:
+            self._current_app_id = None
+            self._app_host.clear()
+            self.refresh_cards()
+            return
         self.refresh_cards()
 
     def _build_ui(self):
@@ -130,6 +135,15 @@ class DashboardDock(QgsDockWidget):
     def refresh_cards(self):
         """Rebuild card grid from the registry."""
         if self._registry is None:
+            for card in self._cards.values():
+                self.card_layout.removeWidget(card)
+                card.deleteLater()
+            self._cards.clear()
+            for toolbox_card in self._toolbox_cards.values():
+                self.card_layout.removeWidget(toolbox_card)
+                toolbox_card.deleteLater()
+            self._toolbox_cards.clear()
+            self._empty_label.setVisible(True)
             return
 
         # Clear existing cards
@@ -187,11 +201,16 @@ class DashboardDock(QgsDockWidget):
 
     def remove_card(self, app_id: str):
         """Remove a card from the grid."""
+        if app_id == self._current_app_id:
+            self._app_host.clear()
+            self._current_app_id = None
+            self._show_cards()
+
         card = self._cards.pop(app_id, None)
         if card:
             self.card_layout.removeWidget(card)
             card.deleteLater()
-        if not self._cards:
+        if not self._cards and not self._toolbox_cards:
             self._empty_label.setVisible(True)
 
     def update_card_state(self, app_id: str):

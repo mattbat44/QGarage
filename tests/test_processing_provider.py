@@ -1,3 +1,4 @@
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from qgarage.core.app_registry import AppEntry, ToolboxEntry
@@ -22,7 +23,8 @@ class DummyRegistry:
     def __init__(self, entries, toolboxes, apps):
         self.entries = entries
         self.toolbox_entries = toolboxes
-        self.uv_bridge = MagicMock()
+        self.uv_bridge = MagicMock(name="uv_bridge")
+        self.pixi_bridge = MagicMock(name="pixi_bridge")
         self._apps = apps
 
     def load_app(self, app_id):
@@ -30,7 +32,7 @@ class DummyRegistry:
 
 
 def _make_app(app_id, name):
-    return ExampleApp(app_meta={"id": app_id, "name": name}, app_dir=MagicMock())
+    return ExampleApp(app_meta={"id": app_id, "name": name}, app_dir=Path(f"/{app_id}"))
 
 
 def test_provider_groups_algorithms_by_toolbox():
@@ -88,14 +90,20 @@ def test_algorithm_process_uses_isolated_runner(monkeypatch):
 
     captured = {}
 
-    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+    bridge = MagicMock(name="resolved_bridge")
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True, *, bridge=None):
         captured["app"] = app_instance
         captured["uv_bridge"] = uv_bridge
+        captured["bridge"] = bridge
         captured["inputs"] = inputs
         captured["show_console"] = show_console
         return {"status": "success", "message": "done"}
 
     monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)
+    monkeypatch.setattr(
+        "qgarage.core.processing_provider.resolve_bridge_for_app", lambda *args: bridge
+    )
 
     algorithm = QGarageProcessingAlgorithm(registry, entry)
     algorithm.initAlgorithm({})
@@ -105,6 +113,7 @@ def test_algorithm_process_uses_isolated_runner(monkeypatch):
 
     assert captured["app"] is app
     assert captured["uv_bridge"] is registry.uv_bridge
+    assert captured["bridge"] is bridge
     assert captured["inputs"] == {"distance": 42.5}
     assert captured["show_console"] is False
     assert result == {"STATUS": "success", "MESSAGE": "done"}
@@ -129,8 +138,14 @@ def test_algorithm_process_can_show_console(monkeypatch):
 
     captured = {}
 
-    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+    monkeypatch.setattr(
+        "qgarage.core.processing_provider.resolve_bridge_for_app",
+        lambda *args: MagicMock(name="resolved_bridge"),
+    )
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True, *, bridge=None):
         captured["show_console"] = show_console
+        captured["bridge"] = bridge
         return {"status": "success", "message": "done"}
 
     monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)
@@ -143,6 +158,7 @@ def test_algorithm_process_can_show_console(monkeypatch):
     )
 
     assert captured["show_console"] is True
+    assert captured["bridge"] is not None
 
 
 def test_algorithm_exposes_declared_outputs(monkeypatch):
@@ -174,7 +190,12 @@ def test_algorithm_exposes_declared_outputs(monkeypatch):
         entries={entry.app_id: entry}, toolboxes={}, apps={entry.app_id: app}
     )
 
-    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+    monkeypatch.setattr(
+        "qgarage.core.processing_provider.resolve_bridge_for_app",
+        lambda *args: MagicMock(name="resolved_bridge"),
+    )
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True, *, bridge=None):
         return app_instance.execute_logic(inputs)
 
     monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)
@@ -211,7 +232,12 @@ def test_algorithm_without_outputs_maintains_backward_compatibility(monkeypatch)
         entries={entry.app_id: entry}, toolboxes={}, apps={entry.app_id: app}
     )
 
-    def fake_run(app_instance, uv_bridge, inputs, show_console=True):
+    monkeypatch.setattr(
+        "qgarage.core.processing_provider.resolve_bridge_for_app",
+        lambda *args: MagicMock(name="resolved_bridge"),
+    )
+
+    def fake_run(app_instance, uv_bridge, inputs, show_console=True, *, bridge=None):
         return {"status": "success", "message": "done", "extra_key": "ignored"}
 
     monkeypatch.setattr("qgarage.core.processing_provider.run_app_isolated", fake_run)

@@ -265,6 +265,9 @@ def test_algorithm_process_execution():
         patch(
             "qgarage.processing.algorithm_wrapper.wait_for_isolated_app_result"
         ) as wait_for_result,
+        patch(
+            "qgarage.processing.algorithm_wrapper.BaseAppAlgorithm._get_bridge"
+        ) as get_bridge,
     ):
         launch_run.return_value = {
             "process": Mock(),
@@ -273,6 +276,7 @@ def test_algorithm_process_execution():
             "tmp_dir": Mock(),
         }
         wait_for_result.return_value = isolated_result
+        get_bridge.return_value = Mock(name="bridge")
 
         result = algorithm.processAlgorithm(parameters, context, feedback)
 

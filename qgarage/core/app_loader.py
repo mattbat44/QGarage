@@ -16,6 +16,30 @@ from .uv_bridge import SysPathContext, UvBridge
 logger = logging.getLogger("qgarage.app_loader")
 
 
+def _alias_active_qgarage_package() -> None:
+    """Alias the active plugin package to `qgarage` for app imports.
+
+    Side-by-side test installs may load this module under `qgarage_test.*` while
+    bundled or third-party apps still import `qgarage.core.base_app`. Ensure both
+    names resolve to the same active package/module objects before executing the
+    app module so `issubclass()` checks remain stable.
+    """
+    current_package = __package__ or "qgarage.core"
+    root_package_name = current_package.split(".", 1)[0]
+    if root_package_name == "qgarage":
+        return
+
+    root_module = sys.modules.get(root_package_name)
+    if root_module is not None and "qgarage" not in sys.modules:
+        sys.modules["qgarage"] = root_module
+
+    for active_name, module in list(sys.modules.items()):
+        if not active_name.startswith(root_package_name + "."):
+            continue
+        aliased_name = "qgarage" + active_name[len(root_package_name) :]
+        sys.modules.setdefault(aliased_name, module)
+
+
 class AppLoader:
     """Loads app modules dynamically with full fault isolation."""
 
@@ -44,6 +68,7 @@ class AppLoader:
             site_packages = bridge.get_site_packages(app_dir)
 
             with SysPathContext(site_packages):
+                _alias_active_qgarage_package()
                 entry_point = app_dir / app_meta.get("entry_point", "main.py")
                 if not entry_point.exists():
                     raise FileNotFoundError(

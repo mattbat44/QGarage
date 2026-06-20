@@ -1,6 +1,8 @@
 """Tests for EnvBridge protocol and resolve_bridge_for_app factory."""
 
 import json
+import sys
+import types
 from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock
@@ -8,7 +10,6 @@ from unittest.mock import MagicMock
 import pytest
 
 from qgarage.core.env_bridge import EnvBridge, resolve_bridge_for_app
-
 
 # ---------------------------------------------------------------------------
 # resolve_bridge_for_app
@@ -82,6 +83,31 @@ class TestResolveBridgeForApp:
 # ---------------------------------------------------------------------------
 
 
+def test_alias_active_qgarage_package_maps_side_by_side_namespace(monkeypatch):
+    from qgarage.core.app_loader import _alias_active_qgarage_package
+
+    root = types.ModuleType("qgarage_test")
+    core = types.ModuleType("qgarage_test.core")
+    base_app = types.ModuleType("qgarage_test.core.base_app")
+
+    monkeypatch.setattr(
+        "qgarage.core.app_loader.__package__", "qgarage_test.core", raising=False
+    )
+    monkeypatch.setitem(sys.modules, "qgarage_test", root)
+    monkeypatch.setitem(sys.modules, "qgarage_test.core", core)
+    monkeypatch.setitem(sys.modules, "qgarage_test.core.base_app", base_app)
+
+    monkeypatch.delitem(sys.modules, "qgarage", raising=False)
+    monkeypatch.delitem(sys.modules, "qgarage.core", raising=False)
+    monkeypatch.delitem(sys.modules, "qgarage.core.base_app", raising=False)
+
+    _alias_active_qgarage_package()
+
+    assert sys.modules["qgarage"] is root
+    assert sys.modules["qgarage.core"] is core
+    assert sys.modules["qgarage.core.base_app"] is base_app
+
+
 class TestProtocolConformance:
     """Verify that UvBridge and PixiBridge satisfy the EnvBridge protocol."""
 
@@ -126,12 +152,14 @@ class TestAppLoaderBridgeResolution:
             "[project]\nname = 'test'\n", encoding="utf-8"
         )
         (app_dir / "app_meta.json").write_text(
-            json.dumps({
-                "id": "pixi_app",
-                "name": "Pixi App",
-                "entry_point": "main.py",
-                "class_name": "App",
-            }),
+            json.dumps(
+                {
+                    "id": "pixi_app",
+                    "name": "Pixi App",
+                    "entry_point": "main.py",
+                    "class_name": "App",
+                }
+            ),
             encoding="utf-8",
         )
         (app_dir / "main.py").write_text(
@@ -175,12 +203,14 @@ class TestAppLoaderBridgeResolution:
         app_dir.mkdir()
         (app_dir / "requirements.txt").write_text("requests\n", encoding="utf-8")
         (app_dir / "app_meta.json").write_text(
-            json.dumps({
-                "id": "uv_app",
-                "name": "UV App",
-                "entry_point": "main.py",
-                "class_name": "App",
-            }),
+            json.dumps(
+                {
+                    "id": "uv_app",
+                    "name": "UV App",
+                    "entry_point": "main.py",
+                    "class_name": "App",
+                }
+            ),
             encoding="utf-8",
         )
         (app_dir / "main.py").write_text(

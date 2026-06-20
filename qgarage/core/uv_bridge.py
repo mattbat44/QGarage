@@ -10,6 +10,11 @@ from typing import Optional
 from .constants import REQUIREMENTS_FILENAME, VENV_DIR
 from .logger import log_error, log_info
 
+
+class _EnvSetupError(RuntimeError):
+    """Raised when a persistent app environment cannot be prepared."""
+
+
 _CREATE_NO_WINDOW = 0x08000000 if platform.system() == "Windows" else 0
 _CREATE_NEW_CONSOLE = 0x00000010 if platform.system() == "Windows" else 0
 
@@ -189,7 +194,7 @@ class UvBridge:
             )
 
     def ensure_env(self, app_dir: Path) -> None:
-        """Create a venv and install requirements (idempotent)."""
+        """Create or update a persistent app venv (idempotent)."""
         self.create_venv(app_dir)
         self.install_requirements(app_dir)
 
@@ -203,18 +208,29 @@ class UvBridge:
             log_info(f"Venv already exists at {venv_path}", "uv_bridge")
             return self._site_packages_path(venv_path)
 
+        cmd = [self.uv_exe, "venv", str(venv_path)]
         try:
-            subprocess.run(
-                [self.uv_exe, "venv", str(venv_path)],
+            result = subprocess.run(
+                cmd,
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=str(app_dir),
                 env=_build_subprocess_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
-            raise RuntimeError(f"Failed to create uv venv:\n{error_msg}") from e
+            raise _EnvSetupError(
+                self._format_setup_error(
+                    action="create uv venv",
+                    app_dir=app_dir,
+                    cmd=cmd,
+                    stdout=e.stdout,
+                    stderr=e.stderr,
+                )
+            ) from e
+
+        self._log_setup_output("uv venv", app_dir, result.stdout, result.stderr)
         log_info(f"Created venv at {venv_path}", "uv_bridge")
         return self._site_packages_path(venv_path)
 
@@ -237,26 +253,37 @@ class UvBridge:
             )
             return
 
+        cmd = [
+            self.uv_exe,
+            "pip",
+            "install",
+            "-r",
+            str(req_file),
+            "--python",
+            str(self._python_exe(venv_path)),
+        ]
         try:
-            subprocess.run(
-                [
-                    self.uv_exe,
-                    "pip",
-                    "install",
-                    "-r",
-                    str(req_file),
-                    "--python",
-                    str(self._python_exe(venv_path)),
-                ],
+            result = subprocess.run(
+                cmd,
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=str(app_dir),
                 env=_build_subprocess_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
-            raise RuntimeError(f"Failed to install requirements:\n{error_msg}") from e
+            raise _EnvSetupError(
+                self._format_setup_error(
+                    action="install uv requirements",
+                    app_dir=app_dir,
+                    cmd=cmd,
+                    stdout=e.stdout,
+                    stderr=e.stderr,
+                )
+            ) from e
+
+        self._log_setup_output("uv pip install", app_dir, result.stdout, result.stderr)
         log_info(f"Installed requirements for {app_dir.name}", "uv_bridge")
 
     def launch_uvx_windowed(
@@ -315,11 +342,7 @@ class UvBridge:
         venv_site_packages: Optional[str] = None,
         show_window: bool = True,
     ) -> "subprocess.Popen":
-        """Run an app's execute_logic in an isolated uv subprocess.
-
-        Uses the *current* Python interpreter (sys.executable - i.e. QGIS's
-        Python) so that native packages like GDAL are available without
-        reinstallation.
+        """Run an app's execute_logic using the app's persistent uv environment.
 
         Args:
             runner_path:        Path to the generated runner script.
@@ -331,21 +354,15 @@ class UvBridge:
         Returns:
             The Popen object for the spawned process.
         """
+        import json
         import subprocess as _sp
 
-        python_exe = _resolve_headless_python_executable()
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+        app_dir = Path(config["app_dir"])
+        self.ensure_env(app_dir)
+        python_exe = self._python_exe(app_dir / VENV_DIR)
 
-        cmd = [
-            self.uv_exe,
-            "run",
-            "--isolated",
-            "--python",
-            python_exe,
-        ]
-        if requirements_path and requirements_path.exists():
-            cmd += ["--with-requirements", str(requirements_path)]
-
-        cmd += [str(runner_path), str(config_path)]
+        cmd = [str(python_exe), str(runner_path), str(config_path)]
 
         launch_env = _build_subprocess_env(venv_site_packages=venv_site_packages)
 
@@ -364,7 +381,8 @@ class UvBridge:
             process = _sp.Popen(cmd, **popen_kwargs)
 
         log_info(
-            f"Launched isolated app process (pid={process.pid}, show_window={show_window}): {' '.join(cmd)}",
+            "Launched persistent uv app process "
+            f"(pid={process.pid}, show_window={show_window}): {' '.join(cmd)}",
             "uv_bridge",
         )
         return process
@@ -407,6 +425,50 @@ class UvBridge:
         except StopIteration:
             log_error(f"Could not find site-packages in {venv_path}", "uv_bridge")
             return None
+
+    def _log_setup_output(
+        self,
+        action: str,
+        app_dir: Path,
+        stdout_text: Optional[str],
+        stderr_text: Optional[str],
+    ) -> None:
+        stdout_clean = (stdout_text or "").strip()
+        stderr_clean = (stderr_text or "").strip()
+        if stdout_clean:
+            log_info(
+                f"{action} output for {app_dir.name}:\n{stdout_clean}",
+                "uv_bridge",
+            )
+        if stderr_clean:
+            log_info(
+                f"{action} stderr for {app_dir.name}:\n{stderr_clean}",
+                "uv_bridge",
+            )
+
+    def _format_setup_error(
+        self,
+        *,
+        action: str,
+        app_dir: Path,
+        cmd: Sequence[str],
+        stdout: Optional[str],
+        stderr: Optional[str],
+    ) -> str:
+        stdout_clean = (stdout or "").strip()
+        stderr_clean = (stderr or "").strip()
+        combined = "\n".join(part for part in (stdout_clean, stderr_clean) if part)
+        log_error(
+            f"Failed to {action} for {app_dir.name}. Command: {' '.join(cmd)}\n"
+            f"Working directory: {app_dir}\n"
+            f"Output:\n{combined or '<no output>'}",
+            "uv_bridge",
+        )
+        return (
+            f"Failed to {action} for {app_dir.name}. "
+            "See QGIS logs for full command/output.\n"
+            f"{combined or '<no output>'}"
+        )
 
     @staticmethod
     def _site_packages_path(venv_path: Path) -> Optional[Path]:

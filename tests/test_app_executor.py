@@ -2,7 +2,11 @@ import tempfile
 from pathlib import Path
 from typing import Any, cast
 
-from qgarage.core.app_executor import IsolatedAppRun, run_app_isolated
+from qgarage.core.app_executor import (
+    IsolatedAppRun,
+    run_app_isolated,
+    start_isolated_app_run,
+)
 
 
 class FakeProcess:
@@ -26,6 +30,36 @@ class FakeProcess:
 
     def kill(self):
         self.kill_called = True
+
+
+def test_start_isolated_app_run_uses_show_window_keyword(monkeypatch, tmp_path):
+    class DummyBridge:
+        def get_site_packages(self, app_dir):
+            return None
+
+        def launch_app_isolated(self, **kwargs):
+            self.kwargs = kwargs
+            return FakeProcess()
+
+    class DummyApp:
+        app_dir = tmp_path
+        app_meta = {"entry_point": "main.py", "class_name": "App"}
+
+    bridge = DummyBridge()
+    monkeypatch.setattr(
+        "qgarage.core.app_executor.serialize_inputs", lambda inputs, tmp: inputs
+    )
+
+    run = start_isolated_app_run(
+        app=cast(Any, DummyApp()),
+        uv_bridge=cast(Any, object()),
+        inputs={},
+        show_console=False,
+        bridge=cast(Any, bridge),
+    )
+
+    assert bridge.kwargs["show_window"] is False
+    run.tmp_dir.cleanup()
 
 
 def test_run_app_isolated_stops_lingering_process(monkeypatch, tmp_path):

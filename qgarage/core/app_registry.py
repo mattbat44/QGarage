@@ -225,10 +225,14 @@ class AppRegistry:
         return discovered
 
     def load_all(self) -> None:
-        """Load all discovered apps (DEPRECATED - use lazy loading)."""
+        """Load all discovered apps whose environments are already ready."""
         for entry in self._entries.values():
             if entry.instance is None:
                 self._load_entry(entry)
+
+    def iter_entries(self) -> list[AppEntry]:
+        """Return a stable list of all registered app entries."""
+        return list(self._entries.values())
 
     def load_app(self, app_id: str) -> Optional["BaseApp"]:
         """Load a specific app by ID (lazy)."""

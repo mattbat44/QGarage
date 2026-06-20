@@ -12,7 +12,7 @@ from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction
 
 from .core.app_registry import AppEntry, AppRegistry
-from .core.logger import log_error
+from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
 from .core.uv_bridge import UvBridge
 from .processing.processing_provider import QGarageProcessingProvider
@@ -40,7 +40,9 @@ class QGaragePlugin:
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
-        icon_path = os.path.join(PLUGIN_DIR, "icon.svg")
+        plugin_dir = getattr(self, "PLUGIN_DIR", PLUGIN_DIR)
+        apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+        icon_path = os.path.join(plugin_dir, "icon.svg")
         self.action = QAction(
             QIcon(icon_path),
             "QGarage Dashboard",
@@ -67,14 +69,15 @@ class QGaragePlugin:
             self.pixi_bridge = None
 
         if self.uv_bridge is not None or self.pixi_bridge is not None:
-            self.registry = AppRegistry(APPS_DIR, self.uv_bridge, self.pixi_bridge)
+            self.registry = AppRegistry(apps_dir, self.uv_bridge, self.pixi_bridge)
             self.registry.discover()
-            self.registry.load_all()
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
         if self.registry is not None:
             self.dock.set_registry(self.registry)
+            for entry in self.registry.iter_entries():
+                self._prepare_app_environment_async(entry)
         self.dock.install_requested.connect(self._on_install_requested)
         self.dock.new_app_requested.connect(self._on_new_app_requested)
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
@@ -101,6 +104,8 @@ class QGaragePlugin:
             self.registry = None
 
         if self.dock is not None and not sip.isdeleted(self.dock):
+            with contextlib.suppress(Exception):
+                self.dock.set_registry(None)
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()
             self.dock = None
@@ -118,13 +123,23 @@ class QGaragePlugin:
         self.uv_bridge = None
         self.pixi_bridge = None
         self._env_workers.clear()
+        log_info("Plugin unload completed", "plugin")
 
     def _stop_env_workers(self) -> None:
-        for worker in self._env_workers.values():
+        for app_id, worker in list(self._env_workers.items()):
             try:
+                if hasattr(worker, "setup_finished"):
+                    with contextlib.suppress(Exception):
+                        worker.setup_finished.disconnect(self._on_env_setup_finished)
+                with contextlib.suppress(Exception):
+                    worker.finished.disconnect(worker.deleteLater)
+                with contextlib.suppress(Exception):
+                    worker.quit()
                 worker.wait()
             except RuntimeError:
                 continue
+            finally:
+                self._env_workers.pop(app_id, None)
 
     def _provider_is_alive(self) -> bool:
         provider = self.processing_provider
@@ -145,6 +160,8 @@ class QGaragePlugin:
         except RuntimeError:
             # Provider can already be deleted by QGIS teardown order.
             pass
+        except Exception as exc:
+            log_error(f"Failed to remove Processing provider cleanly: {exc}")
         finally:
             self.processing_provider = None
 
@@ -203,7 +220,8 @@ class QGaragePlugin:
             self.dock.setVisible(checked)
 
     def _on_install_requested(self):
-        dialog = InstallDialog(APPS_DIR, self.iface.mainWindow())
+        apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+        dialog = InstallDialog(apps_dir, self.iface.mainWindow())
         dialog.app_installed.connect(self._on_app_installed)
         dialog.exec()
 
@@ -224,6 +242,7 @@ class QGaragePlugin:
             # Re-discover to pick up the new/updated toolbox
             self.registry.discover()
             self.dock.refresh_cards()
+            self._refresh_processing_provider()
             toolbox_entry = self.registry.toolbox_entries.get(item_id)
             if toolbox_entry is not None:
                 for app_entry in toolbox_entry.app_entries.values():
@@ -232,16 +251,18 @@ class QGaragePlugin:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
             if item_id in self.registry.entries:
-                self.registry.remove_app(item_id)
+                self._env_workers.pop(item_id, None)
                 self.dock.remove_card(item_id)
+                self.registry.remove_app(item_id)
 
             # Read app_meta and register
-            meta_file = APPS_DIR / item_id / "app_meta.json"
+            apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+            meta_file = apps_dir / item_id / "app_meta.json"
             if not meta_file.exists():
                 return
             with open(meta_file, encoding="utf-8") as f:
                 app_meta = json.load(f)
-            entry = AppEntry(APPS_DIR / item_id, app_meta)
+            entry = AppEntry(apps_dir / item_id, app_meta)
             self.registry.register_entry(entry)
             self.dock.add_card(entry)
             self._prepare_app_environment_async(entry)
@@ -274,7 +295,9 @@ class QGaragePlugin:
         self._env_workers[entry.app_id] = worker
         worker.start()
 
-    def _on_env_setup_finished(self, app_id: str, success: bool, error_text: str) -> None:
+    def _on_env_setup_finished(
+        self, app_id: str, success: bool, error_text: str
+    ) -> None:
         if self.registry is None or self.dock is None:
             self._env_workers.pop(app_id, None)
             return
@@ -289,11 +312,13 @@ class QGaragePlugin:
             self._refresh_processing_provider()
         else:
             entry.health.record_error(error_text)
+            log_error(f"Environment setup failed for {app_id}: {error_text}")
 
         self.dock.update_card_state(app_id)
 
     def _on_new_app_requested(self):
-        dialog = ScaffoldDialog(APPS_DIR, self.iface.mainWindow())
+        apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+        dialog = ScaffoldDialog(apps_dir, self.iface.mainWindow())
         dialog.app_created.connect(self._on_app_scaffolded)
         dialog.exec()
 

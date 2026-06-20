@@ -2,14 +2,18 @@
 
 import json
 import platform
+import subprocess
 from pathlib import Path
 from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from qgarage.core.pixi_bridge import PixiBridge, _resolve_pixi_executable
-
+from qgarage.core.pixi_bridge import (
+    PixiBridge,
+    _build_pixi_env,
+    _resolve_pixi_executable,
+)
 
 # ---------------------------------------------------------------------------
 # _resolve_pixi_executable
@@ -104,13 +108,25 @@ def pixi_bridge():
 # ---------------------------------------------------------------------------
 
 
+def test_build_pixi_env_removes_python_poisoning_vars(monkeypatch):
+    monkeypatch.setenv("PYTHONHOME", "bad-home")
+    monkeypatch.setenv("PYTHONPATH", "bad-path")
+    monkeypatch.setenv("PATH", "ok")
+
+    env = _build_pixi_env()
+
+    assert "PYTHONHOME" not in env
+    assert "PYTHONPATH" not in env
+    assert env["PATH"] == "ok"
+
+
 class TestEnsureEnv:
     def test_runs_pixi_install(self, pixi_bridge, tmp_path):
         manifest = tmp_path / "pixi.toml"
         manifest.write_text("[project]\nname = 'test'\n", encoding="utf-8")
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+            mock_run.return_value = MagicMock(returncode=0, stdout="ready", stderr="")
             pixi_bridge.ensure_env(tmp_path)
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
@@ -118,12 +134,34 @@ class TestEnsureEnv:
             assert "install" in cmd
             assert "--manifest-path" in cmd
             assert str(manifest) in cmd
+            assert mock_run.call_args.kwargs["cwd"] == str(tmp_path)
+            assert "PYTHONHOME" not in mock_run.call_args.kwargs["env"]
 
     def test_skips_when_no_pixi_toml(self, pixi_bridge, tmp_path):
         """No pixi.toml → no subprocess call."""
         with patch("subprocess.run") as mock_run:
             pixi_bridge.ensure_env(tmp_path)
             mock_run.assert_not_called()
+
+    def test_ensure_env_error_includes_command_context(self, pixi_bridge, tmp_path):
+        manifest = tmp_path / "pixi.toml"
+        manifest.write_text("[project]\nname = 'test'\n", encoding="utf-8")
+
+        with patch("subprocess.run") as mock_run:
+            error = subprocess.CalledProcessError(
+                1,
+                ["pixi", "install"],
+                output="solver log",
+                stderr="dependency failure",
+            )
+            mock_run.side_effect = error
+            with pytest.raises(RuntimeError) as exc:
+                pixi_bridge.ensure_env(tmp_path)
+
+        message = str(exc.value)
+        assert "Failed to install pixi environment" in message
+        assert "solver log" in message
+        assert "dependency failure" in message
 
 
 # ---------------------------------------------------------------------------

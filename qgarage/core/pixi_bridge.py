@@ -9,6 +9,7 @@ import platform
 import shutil
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional
 
@@ -39,6 +40,30 @@ def _wrap_windowed_command(command: list[str], keep_open_on_failure: bool) -> li
 
     quoted = subprocess.list2cmdline(command)
     return ["cmd.exe", "/c", f"{quoted} || pause"]
+
+
+def _build_pixi_env(*, env: Optional[Mapping[str, str]] = None) -> dict[str, str]:
+    """Build a subprocess environment for pixi commands launched from QGIS.
+
+    QGIS/OSGeo shells often inject Python-specific environment variables that
+    interfere with pixi's own interpreter and solver subprocesses. Strip the
+    problematic variables while preserving the rest of the user environment.
+    """
+    launch_env = os.environ.copy()
+    if env:
+        launch_env.update({k: str(v) for k, v in env.items()})
+
+    for var in (
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONCASEOK",
+        "PYTHONIOENCODING",
+        "PYTHONFAULTHANDLER",
+    ):
+        launch_env.pop(var, None)
+
+    return launch_env
 
 
 def _resolve_pixi_executable(requested: str) -> str:
@@ -109,22 +134,49 @@ class PixiBridge:
             )
             return
 
+        cmd = [
+            self.pixi_exe,
+            "install",
+            "--manifest-path",
+            str(manifest),
+        ]
         try:
-            subprocess.run(
-                [
-                    self.pixi_exe,
-                    "install",
-                    "--manifest-path",
-                    str(manifest),
-                ],
+            result = subprocess.run(
+                cmd,
                 check=True,
                 capture_output=True,
                 text=True,
+                cwd=str(app_dir),
+                env=_build_pixi_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
         except subprocess.CalledProcessError as e:
-            error_msg = e.stderr.strip() if e.stderr else e.stdout.strip()
-            raise RuntimeError(f"Failed to install pixi environment:\n{error_msg}") from e
+            stdout_text = (e.stdout or "").strip()
+            stderr_text = (e.stderr or "").strip()
+            combined = "\n".join(part for part in (stdout_text, stderr_text) if part)
+            log_error(
+                "Pixi install failed for "
+                f"{app_dir.name}. Command: {' '.join(cmd)}\n"
+                f"Working directory: {app_dir}\n"
+                f"Output:\n{combined or '<no output>'}",
+                "pixi_bridge",
+            )
+            raise RuntimeError(
+                "Failed to install pixi environment "
+                f"for {app_dir.name}. See QGIS logs for full command/output.\n"
+                f"{combined or '<no output>'}"
+            ) from e
+
+        if result.stdout.strip():
+            log_info(
+                f"pixi install output for {app_dir.name}:\n{result.stdout.strip()}",
+                "pixi_bridge",
+            )
+        if result.stderr.strip():
+            log_info(
+                f"pixi install stderr for {app_dir.name}:\n{result.stderr.strip()}",
+                "pixi_bridge",
+            )
         log_info(f"Pixi environment ready for {app_dir.name}", "pixi_bridge")
 
     def get_site_packages(self, app_dir: Path) -> Optional[str]:
@@ -180,13 +232,7 @@ class PixiBridge:
             str(config_path),
         ]
 
-        launch_env = os.environ.copy()
-        # Strip Python-specific env vars that poison subprocesses
-        for var in (
-            "PYTHONHOME", "PYTHONPATH", "PYTHONSTARTUP",
-            "PYTHONCASEOK", "PYTHONIOENCODING", "PYTHONFAULTHANDLER"
-        ):
-            launch_env.pop(var, None)
+        launch_env = _build_pixi_env()
 
         if venv_site_packages:
             existing = launch_env.get("PYTHONPATH", "")

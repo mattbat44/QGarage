@@ -29,6 +29,7 @@ from qgis.core import (
 from .app_executor import run_app_isolated
 from .app_registry import AppEntry, AppRegistry
 from .base_app import BaseApp, InputSpec, InputType, OutputSpec, OutputType
+from .env_bridge import resolve_bridge_for_app
 
 DEFAULT_GROUP_ID = "qgarage_apps"
 DEFAULT_GROUP_NAME = "Apps"
@@ -117,11 +118,18 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
 
         show_console = self.parameterAsBool(parameters, SHOW_CONSOLE_PARAM, context)
 
+        bridge = resolve_bridge_for_app(
+            app.app_dir,
+            self._registry.pixi_bridge,
+            self._registry.uv_bridge,
+        )
+
         result = run_app_isolated(
             app,
             self._registry.uv_bridge,
             inputs,
             show_console=show_console,
+            bridge=bridge,
         )
 
         for layer_info in result.get("__added_layers__", []):

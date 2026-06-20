@@ -3,6 +3,7 @@
 import json
 import os
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,8 +19,9 @@ from qgarage.core.uv_bridge import (
 @pytest.fixture
 def uv_bridge():
     """Return a UvBridge whose executable verification is mocked."""
-    with patch("subprocess.run") as mock_run, patch(
-        "shutil.which", return_value="/usr/bin/uv"
+    with (
+        patch("subprocess.run") as mock_run,
+        patch("shutil.which", return_value="/usr/bin/uv"),
     ):
         mock_run.return_value = MagicMock(stdout="uv 0.8.0")
         return UvBridge("uv")
@@ -71,6 +73,29 @@ def test_build_subprocess_env_drops_invalid_ssl_cert_dir(tmp_path):
     assert "SSL_CERT_DIR" not in env
 
 
+def test_install_requirements_reports_context_on_failure(uv_bridge, tmp_path):
+    req = tmp_path / "requirements.txt"
+    req.write_text("requests\n", encoding="utf-8")
+    venv_path = tmp_path / ".venv"
+    venv_path.mkdir()
+
+    error = subprocess.CalledProcessError(
+        1,
+        ["uv", "pip", "install"],
+        output="download log",
+        stderr="resolution failed",
+    )
+
+    with patch("subprocess.run", side_effect=error):
+        with pytest.raises(RuntimeError) as exc:
+            uv_bridge.install_requirements(tmp_path)
+
+    message = str(exc.value)
+    assert "install uv requirements" in message
+    assert "download log" in message
+    assert "resolution failed" in message
+
+
 def test_launch_app_isolated_wraps_windows_command_and_sanitizes_env(
     uv_bridge, tmp_path
 ):
@@ -83,11 +108,14 @@ def test_launch_app_isolated_wraps_windows_command_and_sanitizes_env(
     invalid_certs = tmp_path / "invalid certs"
 
     uv_bridge.uv_exe = r"C:\Program Files\uv\uv.exe"
-    python_exe = r"C:\Program Files\QGIS\apps\Python312\python.exe"
+    python_exe = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python_exe.parent.mkdir(parents=True)
+    python_exe.write_text("", encoding="utf-8")
 
     with (
         patch("qgarage.core.uv_bridge.platform.system", return_value="Windows"),
-        patch("qgarage.core.uv_bridge._resolve_headless_python_executable", return_value=python_exe),
+        patch.object(uv_bridge, "ensure_env") as ensure_env,
+        patch.object(uv_bridge, "_python_exe", return_value=python_exe),
         patch.dict(
             "qgarage.core.uv_bridge.os.environ",
             {"SSL_CERT_DIR": str(invalid_certs), "PATH": ""},
@@ -108,14 +136,10 @@ def test_launch_app_isolated_wraps_windows_command_and_sanitizes_env(
     assert process.pid == 123
 
     cmd = mock_popen.call_args[0][0]
+    ensure_env.assert_called_once_with(tmp_path)
+
     inner_command = [
-        uv_bridge.uv_exe,
-        "run",
-        "--isolated",
-        "--python",
-        python_exe,
-        "--with-requirements",
-        str(requirements),
+        str(python_exe),
         str(runner),
         str(config),
     ]

@@ -81,7 +81,7 @@ def start_isolated_app_run(
         config_path=config_path,
         requirements_path=requirements_path if requirements_path.exists() else None,
         venv_site_packages=venv_site_packages,
-        show_console=show_console,
+        show_window=show_console,
     )
 
     return IsolatedAppRun(
