@@ -27,3 +27,6 @@ qgarage/apps/*/.venv/
 qgarage/apps/*/.pixi/
 *.pixi/
 
+# pixi environments
+.pixi/*
+!.pixi/config.toml

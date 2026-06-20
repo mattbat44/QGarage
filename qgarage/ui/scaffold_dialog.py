@@ -4,6 +4,7 @@ from pathlib import Path
 
 from qgis.PyQt.QtCore import pyqtSignal
 from qgis.PyQt.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QFormLayout,
@@ -12,7 +13,6 @@ from qgis.PyQt.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
-    QComboBox,
     QTextEdit,
     QVBoxLayout,
 )

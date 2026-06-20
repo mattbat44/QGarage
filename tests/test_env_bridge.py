@@ -3,13 +3,11 @@
 import json
 import sys
 import types
-from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock
 
 import pytest
 
-from qgarage.core.env_bridge import EnvBridge, resolve_bridge_for_app
+from qgarage.core.env_bridge import resolve_bridge_for_app
 
 # ---------------------------------------------------------------------------
 # resolve_bridge_for_app
@@ -135,7 +133,6 @@ class TestAppLoaderBridgeResolution:
     """Verify AppLoader picks the right bridge per-app."""
 
     def test_loader_uses_pixi_for_pixi_app(self, tmp_path):
-        from unittest.mock import patch
 
         from qgarage.core.app_loader import AppLoader
 

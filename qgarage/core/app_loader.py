@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from .base_app import BaseApp
 
 from .app_state import AppHealth, AppState
-from .env_bridge import EnvBridge, resolve_bridge_for_app
+from .env_bridge import resolve_bridge_for_app
 from .uv_bridge import SysPathContext, UvBridge
 
 logger = logging.getLogger("qgarage.app_loader")

@@ -40,7 +40,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from .app_state import AppHealth
-from .env_bridge import EnvBridge, resolve_bridge_for_app
+from .env_bridge import EnvBridge
 from .settings import ParameterCache, get_pixi_executable, get_uv_executable
 from .subprocess_runner import ProcessMonitor, launch_isolated_app_run
 from .uv_bridge import UvBridge

@@ -8,7 +8,6 @@ import os
 import platform
 import shutil
 import subprocess
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Optional

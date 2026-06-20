@@ -3,8 +3,6 @@
 import json
 import platform
 import subprocess
-from pathlib import Path
-from typing import Optional
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -40,29 +38,26 @@ class TestResolvePixiExecutable:
                 return str(exe)
             return None
 
-        with patch("shutil.which", side_effect=which_side_effect):
-            with patch(
-                "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN"
-                if platform.system() == "Windows"
-                else "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX",
-                [pixi_bin],
-            ):
-                result = _resolve_pixi_executable("pixi")
-                assert result == str(exe)
+        with patch("shutil.which", side_effect=which_side_effect), patch(
+            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN"
+            if platform.system() == "Windows"
+            else "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX",
+            [pixi_bin],
+        ):
+            result = _resolve_pixi_executable("pixi")
+            assert result == str(exe)
 
     def test_returns_requested_as_fallback(self, tmp_path):
         """When nothing is found, return raw value for _verify_pixi to raise."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        with patch("shutil.which", return_value=None):
-            with patch(
-                "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN", [empty_dir]
-            ):
-                with patch(
-                    "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX", [empty_dir]
-                ):
-                    result = _resolve_pixi_executable("pixi")
-                    assert result == "pixi"
+        with patch("shutil.which", return_value=None), patch(
+            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN", [empty_dir]
+        ), patch(
+            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX", [empty_dir]
+        ):
+            result = _resolve_pixi_executable("pixi")
+            assert result == "pixi"
 
 
 # ---------------------------------------------------------------------------

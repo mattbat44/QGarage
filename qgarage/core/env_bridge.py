@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import Optional, Protocol
+from typing import Protocol
 
 from .constants import PIXI_TOML_FILENAME
 
@@ -14,22 +14,22 @@ class EnvBridge(Protocol):
 
     def ensure_env(self, app_dir: Path) -> None: ...
 
-    def get_site_packages(self, app_dir: Path) -> Optional[str]: ...
+    def get_site_packages(self, app_dir: Path) -> str | None: ...
 
     def launch_app_isolated(
         self,
         runner_path: Path,
         config_path: Path,
-        requirements_path: Optional[Path] = None,
-        venv_site_packages: Optional[str] = None,
+        requirements_path: Path | None = None,
+        venv_site_packages: str | None = None,
         show_window: bool = True,
     ) -> subprocess.Popen: ...
 
 
 def resolve_bridge_for_app(
     app_dir: Path,
-    pixi_bridge: Optional[EnvBridge],
-    uv_bridge: Optional[EnvBridge],
+    pixi_bridge: EnvBridge | None,
+    uv_bridge: EnvBridge | None,
 ) -> EnvBridge:
     """Return the appropriate bridge for an app directory.
 

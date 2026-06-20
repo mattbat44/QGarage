@@ -29,7 +29,6 @@ class HelloWorldApp(BaseApp):
         )
 
     def execute_logic(self, inputs):
-        import glymur
         name = inputs.get("name", "World")
         repeat = inputs.get("repeat", 1)
         layer = inputs.get("layer")

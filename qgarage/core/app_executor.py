@@ -34,7 +34,7 @@ TERMINATE_GRACE_SECONDS = 2
 def start_isolated_app_run(
     app: BaseApp,
     uv_bridge: UvBridge = None,
-    inputs: dict[str, Any] = None,
+    inputs: dict[str, Any] | None = None,
     show_console: bool = True,
     *,
     bridge: EnvBridge = None,
@@ -96,7 +96,7 @@ def start_isolated_app_run(
 def run_app_isolated(
     app: BaseApp,
     uv_bridge: UvBridge = None,
-    inputs: dict[str, Any] = None,
+    inputs: dict[str, Any] | None = None,
     show_console: bool = True,
     *,
     bridge: EnvBridge = None,
