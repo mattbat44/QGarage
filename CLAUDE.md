@@ -61,7 +61,7 @@ You are developing a QGarage app — a self-contained mini-tool that runs inside
 
 ## Architecture Overview
 
-QGarage apps run inside QGIS but their `execute_logic()` method is dispatched to an **isolated subprocess** via `uv run --isolated`. This means:
+QGarage apps run inside QGIS but their `execute_logic()` method is dispatched to an **isolated subprocess** using a **persistent venv**. This means:
 
 - The UI (inputs, progress bar, output area) lives on the QGIS main thread.
 - Business logic runs in a **separate console window** as a plain Python process.
@@ -76,7 +76,7 @@ Every app lives in its own folder under `qgarage/apps/<app_id>/`:
 qgarage/apps/my_tool/
 ├── app_meta.json        # Required: app metadata
 ├── main.py              # Required: BaseApp subclass
-├── requirements.txt     # Optional: pip dependencies (resolved at runtime by uv run --isolated)
+├── requirements.txt     # Optional: pip dependencies (installed into persistent venv)
 └── ...                  # Any additional modules/data files
 ```
 
@@ -109,7 +109,7 @@ List pure-Python dependencies only. Do NOT list:
 - `gdal`, `osgeo` — provided by the QGIS/OSGeo4W environment
 - `numpy` — typically bundled with QGIS
 
-Dependencies are **NOT installed at app install time**. They are resolved at runtime by `uv run --isolated --with-requirements requirements.txt` each time the app executes. This keeps installation instant and avoids polluting the environment.
+Dependencies are **installed into a persistent venv** on first run. When an app is opened for the first time, QGarage creates a `.venv/` directory in the app folder and runs `uv pip install -r requirements.txt` to install all dependencies. Subsequent runs reuse this venv, making them much faster. The venv is isolated per-app and never pollutes the QGIS Python environment.
 
 ### pixi.toml (pixi backend — conda ecosystem)
 
@@ -141,11 +141,11 @@ requests = ">=2.28"
 | GDAL, numpy, etc. | Available for free (from QGIS) | Must be declared in `[dependencies]` |
 | Compiled packages | Not supported (pip wheels only) | Full conda-forge access |
 | Environment location | `.venv/` in app dir | `.pixi/envs/default/` in app dir |
-| Dependency resolution | Ephemeral (each run) | Persistent (first `pixi install`, then cached) |
+| Dependency resolution | Persistent (first run via `uv pip install`, then cached) | Persistent (first `pixi install`, then cached) |
 
 **When to use pixi vs uv:**
 
-- Use **uv** (default) when your app only needs pure-Python packages and QGIS's bundled libraries.
+- Use **uv** (default) when your app only needs pure-Python pip packages and QGIS's bundled libraries (GDAL, numpy, etc.).
 - Use **pixi** when your app needs compiled packages not bundled with QGIS (scipy, specific GDAL builds, rasterio, etc.).
 
 **Important:** With pixi, QGIS's bundled packages are **NOT** available in `execute_logic()`. Everything your app needs must be declared in `pixi.toml`. This is the trade-off for gaining access to the full conda-forge ecosystem.
@@ -302,7 +302,7 @@ By default QGarage auto-generates a form from your `add_input()` declarations (*
 | ---------------------- | --------------------------------- | ------------------------------------------------------------ |
 | UI source              | Auto-generated from `add_input()` | Your own `QWidget` from `build_dynamic_widget()`             |
 | `execute_logic()`      | **Required** — runs in subprocess | **Not called** — wire your own signals                       |
-| Subprocess isolation   | Yes (uv run --isolated)           | No — all logic on the QGIS main thread (or your own threads) |
+Subprocess isolation   | Yes (persistent venv subprocess)  | No — all logic on the QGIS main thread (or your own threads) |
 | Progress / output area | Provided automatically            | You provide them                                             |
 
 ### Minimal example
@@ -360,8 +360,8 @@ class MyDynamicApp(BaseApp):
 3. Inputs are serialized: QGIS layers → GeoJSON exports + metadata dicts; primitives pass through.
 4. A temp directory is created with `inputs.json`, `runner.py`, `config.json`.
 5. The framework auto-detects the backend:
-   - **uv apps** (have `requirements.txt`): `uv run --isolated --python <python.exe> --with-requirements requirements.txt runner.py config.json`
-   - **pixi apps** (have `pixi.toml`): `pixi run --manifest-path <pixi.toml> python runner.py config.json`
+   - **uv apps** (have `requirements.txt`): Creates `.venv/` on first run with `uv venv` + `uv pip install -r requirements.txt`, then runs `.venv/Scripts/python.exe runner.py config.json` (Windows) or `.venv/bin/python runner.py config.json` (Unix)
+   - **pixi apps** (have `pixi.toml`): Runs `pixi run --manifest-path <pixi.toml> python runner.py config.json`
 6. The runner script stubs all `qgis.*` modules, deserializes inputs, imports your app class, and calls `execute_logic(inputs)`.
 7. `self.log()` calls become `print()` — visible live in the console.
 8. The result dict is written to `output.json`.

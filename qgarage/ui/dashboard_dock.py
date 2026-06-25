@@ -6,7 +6,6 @@ from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QPushButton,
     QScrollArea,
     QStackedWidget,
@@ -69,12 +68,6 @@ class DashboardDock(QgsDockWidget):
         toolbar_layout = QHBoxLayout(self._toolbar)
         toolbar_layout.setContentsMargins(8, 8, 8, 8)
         toolbar_layout.setSpacing(6)
-
-        self.search_bar = QLineEdit()
-        self.search_bar.setObjectName("qgarageSearchBar")
-        self.search_bar.setPlaceholderText("Search apps...")
-        self.search_bar.textChanged.connect(self._filter_cards)
-        toolbar_layout.addWidget(self.search_bar, stretch=1)
 
         self.install_button = QPushButton("+  Install")
         self.install_button.setObjectName("qgarageInstallButton")
@@ -290,48 +283,6 @@ class DashboardDock(QgsDockWidget):
         entry.health.reset()
         self._registry.load_app(app_id)
         self.update_card_state(app_id)
-
-    def _filter_cards(self, text: str):
-        text_lower = text.lower()
-
-        # Filter standalone app cards
-        for app_id, card in self._cards.items():
-            name = card._app_meta.get("name", "").lower()
-            desc = card._app_meta.get("description", "").lower()
-            tags = " ".join(card._app_meta.get("tags", [])).lower()
-            visible = text_lower in name or text_lower in desc or text_lower in tags
-            card.setVisible(visible)
-
-        # Filter toolbox cards
-        for toolbox_id, toolbox_card in self._toolbox_cards.items():
-            toolbox_meta = toolbox_card.toolbox_entry.toolbox_meta
-            toolbox_name = toolbox_meta.get("name", "").lower()
-            toolbox_desc = toolbox_meta.get("description", "").lower()
-            toolbox_tags = " ".join(toolbox_meta.get("tags", [])).lower()
-
-            # Check if toolbox itself matches
-            toolbox_matches = (
-                text_lower in toolbox_name
-                or text_lower in toolbox_desc
-                or text_lower in toolbox_tags
-            )
-
-            # Check if any app in the toolbox matches
-            any_app_matches = False
-            for app_entry in toolbox_card.toolbox_entry.app_entries.values():
-                app_name = app_entry.app_meta.get("name", "").lower()
-                app_desc = app_entry.app_meta.get("description", "").lower()
-                app_tags = " ".join(app_entry.app_meta.get("tags", [])).lower()
-                if (
-                    text_lower in app_name
-                    or text_lower in app_desc
-                    or text_lower in app_tags
-                ):
-                    any_app_matches = True
-                    break
-
-            # Show toolbox if either toolbox or any of its apps matches
-            toolbox_card.setVisible(toolbox_matches or any_app_matches)
 
     def showEvent(self, event):
         super().showEvent(event)

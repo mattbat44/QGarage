@@ -160,7 +160,7 @@ class ToolboxCardWidget(QFrame):
         # Fallback: coloured square (different color than single apps)
         fallback = QLabel()
         fallback.setFixedSize(40, 40)
-        fallback.setStyleSheet("background-color: #FF9800; border-radius: 8px;")
+        fallback.setStyleSheet("background-color: #5b6eb8; border-radius: 8px;")
         return fallback
 
     def _toggle_expanded(self):
