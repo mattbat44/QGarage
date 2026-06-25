@@ -17,6 +17,7 @@ from ..core.app_registry import AppEntry, AppRegistry
 from ..themes.theme_manager import ThemeManager
 from .app_card_widget import AppCardWidget
 from .app_host_widget import AppHostWidget
+from .env_setup_widget import EnvSetupWidget
 from .toolbox_card_widget import ToolboxCardWidget
 
 logger = logging.getLogger("qgarage.dashboard")
@@ -42,6 +43,7 @@ class DashboardDock(QgsDockWidget):
         self._cards: dict[str, AppCardWidget] = {}
         self._toolbox_cards: dict[str, ToolboxCardWidget] = {}
         self._current_app_id: Optional[str] = None  # Track currently running app
+        self._env_setup_widget: Optional[EnvSetupWidget] = None
 
         self._build_ui()
         ThemeManager.apply_to_widget(self)
@@ -52,8 +54,14 @@ class DashboardDock(QgsDockWidget):
         if registry is None:
             self._current_app_id = None
             self._app_host.clear()
-            self.refresh_cards()
+            # Show env setup if tools aren't ready
+            if self._env_setup_widget and not self._env_setup_widget.is_ready():
+                self._stack.setCurrentIndex(0)
+            else:
+                self.refresh_cards()
             return
+        # If we have a registry, tools are ready - show cards
+        self._stack.setCurrentIndex(1)
         self.refresh_cards()
 
     def _build_ui(self):
@@ -83,10 +91,15 @@ class DashboardDock(QgsDockWidget):
 
         main_layout.addWidget(self._toolbar)
 
-        # --- Stacked widget: cards view + app host view ---
+        # --- Stacked widget: env setup view + cards view + app host view ---
         self._stack = QStackedWidget()
 
-        # Page 0: Card grid
+        # Page 0: Environment setup (shown if tools are unavailable)
+        self._env_setup_widget = EnvSetupWidget()
+        self._env_setup_widget.tools_ready.connect(self._on_tools_ready)
+        self._stack.addWidget(self._env_setup_widget)
+
+        # Page 1: Card grid
         self._cards_page = QWidget()
         cards_page_layout = QVBoxLayout(self._cards_page)
         cards_page_layout.setContentsMargins(0, 0, 0, 0)
@@ -115,7 +128,7 @@ class DashboardDock(QgsDockWidget):
         cards_page_layout.addWidget(self.scroll_area)
         self._stack.addWidget(self._cards_page)
 
-        # Page 1: App host
+        # Page 2: App host
         self._app_host = AppHostWidget()
         self._app_host.back_requested.connect(self._show_cards)
         self._stack.addWidget(self._app_host)
@@ -227,7 +240,7 @@ class DashboardDock(QgsDockWidget):
         """Return to the cards view without clearing the running app."""
         # Don't clear the app - just hide it to preserve state
         self._toolbar.setVisible(True)
-        self._stack.setCurrentIndex(0)
+        self._stack.setCurrentIndex(1)
 
     def _show_app(self, app_id: str):
         """Show an app in the host widget, reusing existing widget if already running."""
@@ -241,7 +254,7 @@ class DashboardDock(QgsDockWidget):
         if app_id == self._current_app_id and self._app_host.has_app():
             # App UI is already open, just switch to it
             self._toolbar.setVisible(False)
-            self._stack.setCurrentIndex(1)
+            self._stack.setCurrentIndex(2)
             return
 
         # If switching to a different app, clear the previous one
@@ -261,7 +274,7 @@ class DashboardDock(QgsDockWidget):
             self._show_cards()  # restore toolbar + card grid
             return
 
-        self._stack.setCurrentIndex(1)
+        self._stack.setCurrentIndex(2)
 
     # --- Slots ---
 
@@ -297,3 +310,9 @@ class DashboardDock(QgsDockWidget):
         for toolbox_card in self._toolbox_cards.values():
             for app_id in toolbox_card.toolbox_entry.app_entries:
                 toolbox_card.update_app_state(app_id)
+
+    def _on_tools_ready(self):
+        """Called when env setup widget signals that tools are ready."""
+        logger.info("Tools are now ready. Switching to app grid.")
+        self._stack.setCurrentIndex(1)
+        self.refresh_cards()

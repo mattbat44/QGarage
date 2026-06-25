@@ -74,8 +74,9 @@ class QGaragePlugin:
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
+        # Always set registry (even if None) - this ensures env setup widget is shown if needed
+        self.dock.set_registry(self.registry)
         if self.registry is not None:
-            self.dock.set_registry(self.registry)
             for entry in self.registry.iter_entries():
                 self._prepare_app_environment_async(entry)
         self.dock.install_requested.connect(self._on_install_requested)
