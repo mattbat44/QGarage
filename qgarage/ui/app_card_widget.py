@@ -51,8 +51,8 @@ class AppCardWidget(QFrame):
 
     def _build_ui(self):
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(12, 10, 12, 10)
-        layout.setSpacing(10)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(12)
 
         # Icon
         icon_widget = self._build_icon()
