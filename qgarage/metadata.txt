@@ -18,6 +18,7 @@ deprecated=False
 hasProcessingProvider=yes
 server=False
 changelog=
+	2.1.2: Fix uv executable discovery on Windows (~/.local/bin fallback), fix module aliasing for side-by-side test installations
 	2.1.1: Fix critical Windows Error 1 subprocess launch bug (nested double-quotes in cmd.exe wrapper), update documentation to accurately reflect persistent venv model (not ephemeral uv run)
 	2.1.0: Persistent per-app environments with improved lifecycle handling, robust unloading/reload/upgrade paths, strengthened app install/update flows, per-app bridge resolution improvements, Windows uv subprocess quoting and SSL_CERT_DIR fixes
 	2.0.1: Fix Windows uv subprocess launch quoting and SSL_CERT_DIR sanitization
