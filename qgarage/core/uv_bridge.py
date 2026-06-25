@@ -76,6 +76,16 @@ def _build_subprocess_env(
     if env:
         launch_env.update({k: str(v) for k, v in env.items()})
 
+    for var in (
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "PYTHONSTARTUP",
+        "PYTHONCASEOK",
+        "PYTHONIOENCODING",
+        "PYTHONFAULTHANDLER",
+    ):
+        launch_env.pop(var, None)
+
     if platform.system() == "Windows" and "SSL_CERT_DIR" in launch_env:
         normalized = _normalize_ssl_cert_dir(launch_env["SSL_CERT_DIR"])
         if normalized is None:
@@ -210,12 +220,27 @@ class UvBridge:
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=5,
+                timeout=10,
+                env=_build_subprocess_env(),
+                creationflags=_CREATE_NO_WINDOW,
             )
             log_info(f"Found uv: {result.stdout.strip()}", "uv_bridge")
-        except Exception as exc:
+        except FileNotFoundError as exc:
             log_error(f"Failed to verify uv at {resolved}: {exc}", "uv_bridge")
-            raise
+            raise RuntimeError(
+                f"uv executable not found (tried: {resolved}). "
+                "Install from https://docs.astral.sh/uv/"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            log_error(f"Failed to verify uv at {resolved}: {exc}", "uv_bridge")
+            raise RuntimeError(
+                f"uv executable verification timed out after {exc.timeout} seconds: {resolved}"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            log_error(f"Failed to verify uv at {resolved}: {exc}", "uv_bridge")
+            raise RuntimeError(
+                f"uv executable verification failed: {resolved}"
+            ) from exc
 
         return resolved
 

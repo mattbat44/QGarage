@@ -72,6 +72,24 @@ def test_build_subprocess_env_drops_invalid_ssl_cert_dir(tmp_path):
     assert "SSL_CERT_DIR" not in env
 
 
+def test_build_subprocess_env_drops_qgis_python_vars():
+    with patch.dict(
+        "qgarage.core.uv_bridge.os.environ",
+        {
+            "PYTHONHOME": r"C:\QGIS\Python",
+            "PYTHONPATH": r"C:\QGIS\python",
+            "PYTHONIOENCODING": "utf-8",
+            "PATH": "",
+        },
+        clear=True,
+    ):
+        env = _build_subprocess_env()
+
+    assert "PYTHONHOME" not in env
+    assert "PYTHONPATH" not in env
+    assert "PYTHONIOENCODING" not in env
+
+
 def test_install_requirements_reports_context_on_failure(uv_bridge, tmp_path):
     req = tmp_path / "requirements.txt"
     req.write_text("requests\n", encoding="utf-8")
@@ -118,6 +136,33 @@ def test_verify_uv_falls_back_to_candidate_dirs_on_windows(tmp_path):
         bridge = UvBridge("uv")
         # Should not raise, should find it in .local/bin
         assert bridge.uv_exe == str(fake_uv_exe)
+
+
+def test_verify_uv_uses_sanitized_env_and_no_window_flags():
+    with (
+        patch("shutil.which", return_value=r"C:\Users\NICA\.local\bin\uv.exe"),
+        patch("subprocess.run") as mock_run,
+    ):
+        mock_run.return_value = MagicMock(stdout="uv 0.8.0")
+        bridge = UvBridge("uv")
+
+    assert bridge.uv_exe == r"C:\Users\NICA\.local\bin\uv.exe"
+    kwargs = mock_run.call_args.kwargs
+    assert kwargs["env"] is not None
+    assert kwargs["creationflags"] == 0x08000000
+
+
+def test_verify_uv_converts_timeout_to_runtime_error():
+    timeout = subprocess.TimeoutExpired(["uv", "--version"], timeout=10)
+
+    with (
+        patch("shutil.which", return_value="/usr/bin/uv"),
+        patch("subprocess.run", side_effect=timeout),
+    ):
+        with pytest.raises(RuntimeError) as exc:
+            UvBridge("uv")
+
+    assert "timed out" in str(exc.value)
 
 
 def test_launch_app_isolated_wraps_windows_command_and_sanitizes_env(

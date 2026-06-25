@@ -1,6 +1,6 @@
 [project]
 name = "qgarage"
-version = "2.1.0"
+version = "2.1.3"
 description = "A QGIS plugin framework for installing and running isolated mini-tools with per-app uv or pixi environments."
 readme = "README.md"
 authors = [
