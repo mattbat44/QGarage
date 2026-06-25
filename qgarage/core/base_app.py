@@ -661,7 +661,7 @@ class BaseApp(ABC):
             action.triggered.connect(lambda checked, p=params: self._restore_params(p))
 
     def _on_run_clicked(self) -> None:
-        """Collect inputs, validate, then dispatch execute_logic via uv run --isolated."""
+        """Collect inputs, validate, then dispatch execute_logic via persistent venv subprocess."""
         inputs = self._collect_inputs()
 
         for spec in self._input_specs:
@@ -846,20 +846,24 @@ class BaseApp(ABC):
             logger.warning(
                 "add_output_layer called before widget was built — adding directly"
             )
-            self._add_layer_to_project({
+            self._add_layer_to_project(
+                {
+                    "source": str(source),
+                    "name": name or Path(source).stem,
+                    "provider": provider,
+                    "layer_type": layer_type,
+                }
+            )
+            return
+
+        self._layer_bridge.layer_requested.emit(
+            {
                 "source": str(source),
                 "name": name or Path(source).stem,
                 "provider": provider,
                 "layer_type": layer_type,
-            })
-            return
-
-        self._layer_bridge.layer_requested.emit({
-            "source": str(source),
-            "name": name or Path(source).stem,
-            "provider": provider,
-            "layer_type": layer_type,
-        })
+            }
+        )
 
     def get_project(self) -> QgsProject:
         """Convenience accessor for the current QGIS project."""

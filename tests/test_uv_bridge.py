@@ -41,7 +41,7 @@ def test_wrap_windowed_command_wraps_full_command_for_cmd():
             "/d",
             "/s",
             "/c",
-            f'"{subprocess.list2cmdline(command)} || pause"',
+            f"{subprocess.list2cmdline(command)} || pause",
         ]
 
 
@@ -147,7 +147,7 @@ def test_launch_app_isolated_wraps_windows_command_and_sanitizes_env(
         "/d",
         "/s",
         "/c",
-        f'"{subprocess.list2cmdline(inner_command)} || pause"',
+        f"{subprocess.list2cmdline(inner_command)} || pause",
     ]
 
     env = mock_popen.call_args.kwargs["env"]

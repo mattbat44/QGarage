@@ -1,11 +1,10 @@
 """
 Isolated subprocess execution for QGarage apps.
 
-Every call to execute_logic() is marshalled into a ``uv run --isolated``
-child process that:
+Every call to execute_logic() is marshalled into a persistent venv subprocess that:
   - opens its own console window (live output visible to the user)
-  - uses the same Python interpreter as QGIS so native packages like GDAL
-    are available without re-installation
+  - uses a persistent .venv/ with dependencies from requirements.txt pre-installed
+  - uses QGIS's Python interpreter so native packages like GDAL are available
   - has all ``qgis.*`` modules stubbed so apps that import them still work
   - captures ``QgsProject.addMapLayer()`` calls and replays them on the
     QGIS main thread after the subprocess finishes
@@ -88,7 +87,7 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
 
 
 # ── Embedded runner script ────────────────────────────────────────────────────
-# Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
+# Written to a temp file and executed by the app's persistent venv python.
 
 RUNNER_SCRIPT = r'''
 

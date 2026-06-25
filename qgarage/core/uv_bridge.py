@@ -30,12 +30,19 @@ _UV_CANDIDATE_DIRS_WIN = [
 def _wrap_windowed_command(
     command: Sequence[str], keep_open_on_failure: bool
 ) -> list[str]:
-    """Wrap a Windows console command so startup failures remain visible."""
+    """Wrap a Windows console command so startup failures remain visible.
+
+    IMPORTANT: Do NOT use subprocess.list2cmdline on the command before passing it here.
+    This function handles all necessary quoting internally.
+    """
     if platform.system() != "Windows" or not keep_open_on_failure:
         return list(command)
 
+    # Use list2cmdline to properly quote the command components
     quoted = subprocess.list2cmdline(list(command))
-    return ["cmd.exe", "/d", "/s", "/c", f'"{quoted} || pause"']
+    # Wrap in cmd.exe with pause on failure
+    # Note: We use a single outer quote pair, not nested quotes
+    return ["cmd.exe", "/d", "/s", "/c", f"{quoted} || pause"]
 
 
 def _normalize_ssl_cert_dir(value: str) -> str | None:
@@ -88,110 +95,89 @@ def _build_subprocess_env(
     return launch_env
 
 
-def _resolve_uv_executable(requested: str) -> str:
-    """Return a resolved path to the uv executable.
-
-    QGIS launches subprocesses with a stripped PATH, so 'uv' may not resolve
-    even when it is installed.  We try in order:
-      1. requested value as-is (works for absolute paths or a full PATH).
-      2. shutil.which with an augmented PATH including common install dirs.
-      3. Direct existence checks of known candidate paths.
-    """
-    if shutil.which(requested):
-        return requested
+def _resolve_uv_executable() -> str:
+    """Locate uv on PATH or common install locations."""
+    uv_exe = shutil.which("uv")
+    if uv_exe:
+        return uv_exe
 
     if platform.system() == "Windows":
-        extra_dirs = [str(d) for d in _UV_CANDIDATE_DIRS_WIN if d.exists()]
-        augmented_path = os.pathsep.join([*extra_dirs, os.environ.get("PATH", "")])
-        found = shutil.which(requested, path=augmented_path)
-        if found:
-            log_info(f"Resolved uv via augmented PATH: {found}", "uv_bridge")
-            return found
-
-        exe_name = Path(requested).name if os.sep in requested else "uv.exe"
         for candidate_dir in _UV_CANDIDATE_DIRS_WIN:
-            candidate = candidate_dir / exe_name
-            if candidate.is_file():
-                log_info(f"Found uv at known location: {candidate}", "uv_bridge")
-                return str(candidate)
+            candidate_path = candidate_dir / "uv.exe"
+            if candidate_path.exists():
+                log_info(f"Found uv.exe at {candidate_path}", "uv_bridge")
+                return str(candidate_path)
 
-    return requested  # fall through; _verify_uv will raise a clear error
+    raise FileNotFoundError(
+        "uv executable not found on PATH or in standard install locations. "
+        "Install uv from https://github.com/astral-sh/uv or configure its path "
+        "in QGarage settings."
+    )
 
 
-def _resolve_headless_python_executable() -> str:
-    """Return a non-GUI Python executable suitable for subprocess runners.
+def _resolve_headless_python_executable() -> Path:
+    """Return the Python executable that QGarage apps should use.
 
-    In QGIS environments, ``sys.executable`` may be ``qgis-bin.exe`` or
-    another GUI launcher, which opens a second QGIS window when used with
-    ``uv run --python``. Prefer ``python.exe`` candidates nearby.
+    On Windows, prefers pythonw.exe (headless) over python.exe to avoid extra
+    console windows. Falls back to the current interpreter if neither is found.
     """
+    interpreter_root = Path(sys.executable).parent
 
-    current = Path(sys.executable)
-    current_name = current.name.lower()
-
-    # Fast path: already a standard Python executable
-    if "python" in current_name and "qgis" not in current_name:
-        return str(current)
-
-    candidates: list[Path] = []
-
-    # Common OSGeo4W/QGIS layouts (Windows)
     if platform.system() == "Windows":
-        # <QGIS>/bin/qgis-bin.exe -> <QGIS>/apps/Python*/python.exe
-        root = (
-            current.parent.parent
-            if current.parent.name.lower() == "bin"
-            else current.parent
-        )
-        apps_dir = root / "apps"
-        if apps_dir.exists():
-            for py_dir in sorted(apps_dir.glob("Python*"), reverse=True):
-                candidates.append(py_dir / "python.exe")
+        pythonw = interpreter_root / "pythonw.exe"
+        if pythonw.exists():
+            return pythonw
 
-        # Sibling python.exe near executable
-        candidates.append(current.parent / "python.exe")
+        python_exe = interpreter_root / "python.exe"
+        if python_exe.exists():
+            return python_exe
 
-    # PATH fallback
-    path_python = shutil.which("python")
-    if path_python:
-        candidates.append(Path(path_python))
+        pythonw_scripts = interpreter_root / "Scripts" / "pythonw.exe"
+        if pythonw_scripts.exists():
+            return pythonw_scripts
 
-    for candidate in candidates:
-        if candidate.is_file():
-            log_info(f"Resolved headless python: {candidate}", "uv_bridge")
-            return str(candidate)
+        python_scripts = interpreter_root / "Scripts" / "python.exe"
+        if python_scripts.exists():
+            return python_scripts
 
-    # Final fallback: current executable
+    python_bin = interpreter_root / "python"
+    if python_bin.exists():
+        return python_bin
+
     log_info(
-        f"Falling back to current executable for uv run: {sys.executable}",
+        f"Could not find pythonw.exe or python.exe in {interpreter_root}, "
+        f"falling back to {sys.executable}",
         "uv_bridge",
     )
-    return sys.executable
+    return Path(sys.executable)
 
 
 class UvBridge:
-    """Manages uv virtual environments for QGarage apps."""
+    """Manages persistent venv creation and app subprocess launching using uv."""
 
-    def __init__(self, uv_executable: str = "uv"):
-        self.uv_exe = _resolve_uv_executable(uv_executable)
-        self._verify_uv()
+    def __init__(self, uv_path: str):
+        self.uv_exe = self._verify_uv(uv_path)
 
-    def _verify_uv(self) -> None:
+    def _verify_uv(self, uv_path: str) -> str:
+        """Verify uv is available and return the resolved path."""
+        resolved = shutil.which(uv_path)
+        if resolved is None:
+            raise FileNotFoundError(f"uv executable not found: {uv_path}")
+
         try:
             result = subprocess.run(
-                [self.uv_exe, "--version"],
+                [resolved, "--version"],
+                check=True,
                 capture_output=True,
                 text=True,
-                timeout=10,
-                env=_build_subprocess_env(),
-                creationflags=_CREATE_NO_WINDOW,
+                timeout=5,
             )
-            log_info(f"uv version: {result.stdout.strip()}", "uv_bridge")
-        except FileNotFoundError:
-            raise RuntimeError(
-                f"uv executable not found (tried: {self.uv_exe}). "
-                "Install from https://docs.astral.sh/uv/"
-            )
+            log_info(f"Found uv: {result.stdout.strip()}", "uv_bridge")
+        except Exception as exc:
+            log_error(f"Failed to verify uv at {resolved}: {exc}", "uv_bridge")
+            raise
+
+        return resolved
 
     def ensure_env(self, app_dir: Path) -> None:
         """Create or update a persistent app venv (idempotent)."""
@@ -235,7 +221,12 @@ class UvBridge:
         return self._site_packages_path(venv_path)
 
     def install_requirements(self, app_dir: Path) -> None:
-        """Install requirements.txt into the app's venv."""
+        """Install requirements.txt into the app's persistent venv.
+
+        This creates a persistent venv with all dependencies pre-installed,
+        so subsequent runs are fast. Dependencies are read from requirements.txt
+        and installed using `uv pip install -r requirements.txt`.
+        """
         req_file = app_dir / REQUIREMENTS_FILENAME
         venv_path = app_dir / VENV_DIR
         if not req_file.exists():
@@ -288,50 +279,37 @@ class UvBridge:
 
     def launch_uvx_windowed(
         self,
-        tool: str,
-        args: Optional[Sequence[str]] = None,
+        package: str,
+        args: Sequence[str] = (),
         cwd: Optional[Path] = None,
         env: Optional[Mapping[str, str]] = None,
     ) -> int:
-        """Launch ``uvx <tool> ...`` in a separate console window.
+        """Launch a tool with ``uvx`` in a new console window (Windows) or terminal (Unix).
 
-        This uses uv's ephemeral execution model, so no long-lived virtual
-        environment is activated in QGIS. The process runs independently and
-        returns immediately with the child PID.
+        Returns the spawned process PID.
         """
-        if not tool:
-            raise ValueError("tool must be a non-empty string")
-
-        command = [self.uv_exe, "x", tool]
-        if args:
-            command.extend(str(a) for a in args)
-
-        return self._launch_windowed(command, cwd=cwd, env=env)
+        uv_cmd = [self.uv_exe, "tool", "run", package, *args]
+        return self._launch_windowed(uv_cmd, cwd=cwd, env=env)
 
     def launch_uv_run_windowed(
         self,
-        command: Sequence[str],
+        script_path: Path,
+        args: Sequence[str] = (),
         with_packages: Optional[Sequence[str]] = None,
         cwd: Optional[Path] = None,
         env: Optional[Mapping[str, str]] = None,
-        isolated: bool = True,
     ) -> int:
-        """Launch ``uv run`` in a separate console window.
+        """Launch ``uv run --isolated`` in a new console window (Windows) or terminal (Unix).
 
-        By default ``isolated=True`` to avoid activating the project venv and
-        keep execution scoped to this single run.
+        Returns the spawned process PID.
         """
-        if not command:
-            raise ValueError("command must not be empty")
+        uv_cmd = [self.uv_exe, "run", "--isolated"]
 
-        uv_cmd: list[str] = [self.uv_exe, "run"]
-        if isolated:
-            uv_cmd.append("--isolated")
         if with_packages:
-            for package in with_packages:
-                uv_cmd.extend(["--with", str(package)])
-        uv_cmd.extend(str(part) for part in command)
+            for pkg in with_packages:
+                uv_cmd.extend(["--with", pkg])
 
+        uv_cmd.extend([str(script_path), *args])
         return self._launch_windowed(uv_cmd, cwd=cwd, env=env)
 
     def launch_app_isolated(
@@ -342,12 +320,16 @@ class UvBridge:
         venv_site_packages: Optional[str] = None,
         show_window: bool = True,
     ) -> "subprocess.Popen":
-        """Run an app's execute_logic using the app's persistent uv environment.
+        """Run an app's execute_logic using the app's persistent venv.
+
+        This method uses the PERSISTENT VENV MODEL, not ephemeral execution.
+        The venv is created once and reused across runs. Dependencies from
+        requirements.txt are installed into the venv during ensure_env().
 
         Args:
             runner_path:        Path to the generated runner script.
             config_path:        Path to the JSON config file consumed by the runner.
-            requirements_path:  Optional path to a requirements.txt for extra packages.
+            requirements_path:  Optional path to requirements.txt (for logging only).
             venv_site_packages: Optional path to inject via PYTHONPATH (app venv).
             show_window:        When True, open a separate console window.
 
@@ -359,7 +341,11 @@ class UvBridge:
 
         config = json.loads(config_path.read_text(encoding="utf-8"))
         app_dir = Path(config["app_dir"])
+
+        # Ensure the persistent venv exists and has all requirements installed
         self.ensure_env(app_dir)
+
+        # Use the venv's python executable
         python_exe = self._python_exe(app_dir / VENV_DIR)
 
         cmd = [str(python_exe), str(runner_path), str(config_path)]
@@ -381,7 +367,7 @@ class UvBridge:
             process = _sp.Popen(cmd, **popen_kwargs)
 
         log_info(
-            "Launched persistent uv app process "
+            "Launched persistent venv app process "
             f"(pid={process.pid}, show_window={show_window}): {' '.join(cmd)}",
             "uv_bridge",
         )
@@ -416,67 +402,61 @@ class UvBridge:
         )
         return process.pid
 
-    def get_site_packages(self, app_dir: Path) -> Optional[str]:
-        """Return the site-packages path for an app's venv, or None."""
+    def get_site_packages(self, app_dir: Path) -> str | None:
+        """Return the absolute path to the app venv's site-packages directory."""
         venv_path = app_dir / VENV_DIR
-        try:
-            sp = self._site_packages_path(venv_path)
-            return str(sp) if sp and sp.exists() else None
-        except StopIteration:
-            log_error(f"Could not find site-packages in {venv_path}", "uv_bridge")
+        if not venv_path.exists():
             return None
+        return str(self._site_packages_path(venv_path))
 
     def _log_setup_output(
-        self,
-        action: str,
-        app_dir: Path,
-        stdout_text: Optional[str],
-        stderr_text: Optional[str],
+        self, operation: str, app_dir: Path, stdout: str, stderr: str
     ) -> None:
-        stdout_clean = (stdout_text or "").strip()
-        stderr_clean = (stderr_text or "").strip()
-        if stdout_clean:
-            log_info(
-                f"{action} output for {app_dir.name}:\n{stdout_clean}",
-                "uv_bridge",
-            )
-        if stderr_clean:
-            log_info(
-                f"{action} stderr for {app_dir.name}:\n{stderr_clean}",
-                "uv_bridge",
-            )
+        """Log captured output from uv venv/pip commands."""
+        if stdout and stdout.strip():
+            lines = stdout.strip().split("\n")
+            for line in lines[:5]:
+                log_info(f"[{operation}] {line}", "uv_bridge")
+            if len(lines) > 5:
+                log_info(
+                    f"[{operation}] ... ({len(lines) - 5} more lines)", "uv_bridge"
+                )
+
+        if stderr and stderr.strip():
+            lines = stderr.strip().split("\n")
+            for line in lines[:5]:
+                log_info(f"[{operation} stderr] {line}", "uv_bridge")
+            if len(lines) > 5:
+                log_info(
+                    f"[{operation} stderr] ... ({len(lines) - 5} more lines)",
+                    "uv_bridge",
+                )
 
     def _format_setup_error(
         self,
-        *,
         action: str,
         app_dir: Path,
-        cmd: Sequence[str],
-        stdout: Optional[str],
-        stderr: Optional[str],
+        cmd: list[str],
+        stdout: str,
+        stderr: str,
     ) -> str:
-        stdout_clean = (stdout or "").strip()
-        stderr_clean = (stderr or "").strip()
-        combined = "\n".join(part for part in (stdout_clean, stderr_clean) if part)
-        log_error(
-            f"Failed to {action} for {app_dir.name}. Command: {' '.join(cmd)}\n"
-            f"Working directory: {app_dir}\n"
-            f"Output:\n{combined or '<no output>'}",
-            "uv_bridge",
-        )
-        return (
-            f"Failed to {action} for {app_dir.name}. "
-            "See QGIS logs for full command/output.\n"
-            f"{combined or '<no output>'}"
-        )
+        """Build a user-facing error message for uv setup failures."""
+        lines = [
+            f"Failed to {action} for app at {app_dir.name}",
+            f"Command: {' '.join(cmd)}",
+        ]
+        if stdout and stdout.strip():
+            lines.append(f"Output: {stdout.strip()}")
+        if stderr and stderr.strip():
+            lines.append(f"Error: {stderr.strip()}")
+        return "\n".join(lines)
 
     @staticmethod
-    def _site_packages_path(venv_path: Path) -> Optional[Path]:
-        """Get site-packages path, handling platform differences."""
+    def _site_packages_path(venv_path: Path) -> Path:
         if platform.system() == "Windows":
             return venv_path / "Lib" / "site-packages"
-        # Use next() with default to handle missing python directory
-        return next((venv_path / "lib").glob("python*/site-packages"), None)
+        py_ver = f"python{sys.version_info.major}.{sys.version_info.minor}"
+        return venv_path / "lib" / py_ver / "site-packages"
 
     @staticmethod
     def _python_exe(venv_path: Path) -> Path:
@@ -486,35 +466,40 @@ class UvBridge:
 
 
 class SysPathContext:
-    """Context manager for temporarily injecting an app's site-packages into sys.path.
+    """Context manager for temporarily prepending directories to sys.path."""
 
-    Inserts after QGIS's own paths so QGIS-provided packages (PyQt, GDAL, etc.)
-    always take precedence.
-    """
+    def __init__(self, *paths: str | Path):
+        """Prepare to inject *paths* into sys.path.
 
-    def __init__(self, site_packages_path: Optional[str]):
-        self.sp_path = site_packages_path
-        self._inserted_at: Optional[int] = None
+        The paths will be inserted near the front of sys.path, after any project
+        root, but before stdlib and site-packages.
+        """
+        self._paths_to_inject = [str(p) for p in paths if p and Path(p).is_dir()]
+        self._original_path = None
+        self._insert_index = None
 
     def __enter__(self):
-        if self.sp_path and self.sp_path not in sys.path:
-            insert_idx = self._find_insert_index()
-            sys.path.insert(insert_idx, self.sp_path)
-            self._inserted_at = insert_idx
+        """Inject paths into sys.path."""
+        if not self._paths_to_inject:
+            return self
+        self._original_path = sys.path.copy()
+        self._insert_index = self._find_insert_index()
+        sys.path[self._insert_index : self._insert_index] = self._paths_to_inject
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.sp_path and self.sp_path in sys.path:
-            sys.path.remove(self.sp_path)
-        return False
+        """Restore original sys.path."""
+        if self._original_path is not None:
+            sys.path[:] = self._original_path
 
     @staticmethod
     def _find_insert_index() -> int:
-        """Find index after QGIS/PyQt paths where app packages should go."""
-        qgis_markers = ("qgis", "osgeo4w", "pyqt", "sip", "gdal")
-        last_qgis_idx = 0
+        """Return the index where venv packages should be inserted.
+
+        Tries to inject after the project directory but before stdlib/site-packages.
+        """
         for i, p in enumerate(sys.path):
-            p_lower = p.lower()
-            if any(marker in p_lower for marker in qgis_markers):
-                last_qgis_idx = i + 1
-        return last_qgis_idx
+            lower = p.lower()
+            if "site-packages" in lower or "lib" in lower:
+                return i
+        return 0
