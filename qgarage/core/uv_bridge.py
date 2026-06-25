@@ -96,7 +96,11 @@ def _build_subprocess_env(
 
 
 def _resolve_uv_executable() -> str:
-    """Locate uv on PATH or common install locations."""
+    """Locate uv on PATH or common install locations.
+
+    This function is kept for backward compatibility but the logic
+    is now integrated into UvBridge._verify_uv() for consistency.
+    """
     uv_exe = shutil.which("uv")
     if uv_exe:
         return uv_exe
@@ -106,6 +110,16 @@ def _resolve_uv_executable() -> str:
             candidate_path = candidate_dir / "uv.exe"
             if candidate_path.exists():
                 log_info(f"Found uv.exe at {candidate_path}", "uv_bridge")
+                return str(candidate_path)
+    else:
+        # Unix-like systems
+        unix_candidates = [
+            Path.home() / ".local" / "bin" / "uv",
+            Path.home() / ".cargo" / "bin" / "uv",
+        ]
+        for candidate_path in unix_candidates:
+            if candidate_path.exists():
+                log_info(f"Found uv at {candidate_path}", "uv_bridge")
                 return str(candidate_path)
 
     raise FileNotFoundError(
@@ -160,7 +174,33 @@ class UvBridge:
 
     def _verify_uv(self, uv_path: str) -> str:
         """Verify uv is available and return the resolved path."""
+        # First try shutil.which
         resolved = shutil.which(uv_path)
+
+        # If not found and user just provided "uv", try our candidate directories
+        if resolved is None and uv_path == "uv":
+            log_info(
+                "uv not found on PATH, checking common install locations", "uv_bridge"
+            )
+            if platform.system() == "Windows":
+                for candidate_dir in _UV_CANDIDATE_DIRS_WIN:
+                    candidate_path = candidate_dir / "uv.exe"
+                    if candidate_path.exists():
+                        resolved = str(candidate_path)
+                        log_info(f"Found uv.exe at {resolved}", "uv_bridge")
+                        break
+            else:
+                # Unix-like systems
+                unix_candidates = [
+                    Path.home() / ".local" / "bin" / "uv",
+                    Path.home() / ".cargo" / "bin" / "uv",
+                ]
+                for candidate_path in unix_candidates:
+                    if candidate_path.exists():
+                        resolved = str(candidate_path)
+                        log_info(f"Found uv at {resolved}", "uv_bridge")
+                        break
+
         if resolved is None:
             raise FileNotFoundError(f"uv executable not found: {uv_path}")
 

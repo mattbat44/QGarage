@@ -1,126 +1,117 @@
 /* QGarage Dark Theme */
 
+* {
+    font-family: "Segoe UI", "Inter", "Roboto", -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
 #qgarageDashboard {
-    background-color: #1e1e2e;
+    background-color: #1a1a24;
 }
 
 /* Toolbar area */
 #qgarageToolbar {
-    background-color: #1e1e2e;
-    border-bottom: 1px solid #3d3d5c;
-    padding: 8px;
-}
-
-/* Search bar */
-#qgarageSearchBar {
-    background-color: #2d2d3f;
-    color: #e0e0e0;
-    border: 1px solid #3d3d5c;
-    border-radius: 6px;
-    padding: 6px 12px;
-    font-size: 12px;
-}
-#qgarageSearchBar:focus {
-    border-color: #4CAF50;
+    background-color: #1a1a24;
+    border-bottom: 1px solid #2a2a38;
+    padding: 10px 12px;
 }
 
 /* Action buttons in toolbar */
 #qgarageInstallButton, #qgarageNewAppButton, #qgarageSettingsButton {
-    background-color: #4CAF50;
+    background-color: #4a9d6f;
     color: white;
     border: none;
     border-radius: 6px;
-    padding: 6px 14px;
-    font-weight: bold;
-    font-size: 12px;
+    padding: 7px 16px;
+    font-weight: 500;
+    font-size: 11px;
 }
 #qgarageInstallButton:hover, #qgarageNewAppButton:hover, #qgarageSettingsButton:hover {
-    background-color: #66BB6A;
+    background-color: #5bb382;
 }
 #qgarageInstallButton:pressed, #qgarageNewAppButton:pressed, #qgarageSettingsButton:pressed {
-    background-color: #388E3C;
+    background-color: #3a7d5f;
 }
 
 /* Card grid scroll area */
 #qgarageCardArea {
-    background-color: #1e1e2e;
+    background-color: #1a1a24;
     border: none;
 }
 
 /* Individual app cards */
 .AppCardWidget {
-    background-color: #2d2d3f;
-    border: 1px solid #3d3d5c;
+    background-color: #242430;
+    border: 1px solid #2f2f3d;
     border-radius: 8px;
 }
 .AppCardWidget:hover {
-    border-color: #4CAF50;
-    background-color: #33334d;
+    border-color: #4a9d6f;
+    background-color: #2a2a34;
 }
 
 /* Toolbox cards */
 .ToolboxCardWidget {
-    background-color: #262638;
-    border: 1px solid #3d3d5c;
+    background-color: #242430;
+    border: 1px solid #2f2f3d;
     border-radius: 10px;
 }
 .ToolboxCardWidget[expanded="true"] {
-    border-color: #4e6c93;
+    border-color: #4a6ba0;
 }
 #toolboxHeader {
     background-color: transparent;
     border-radius: 10px;
 }
 #toolboxHeader:hover {
-    background-color: rgba(255, 255, 255, 0.04);
+    background-color: rgba(255, 255, 255, 0.03);
 }
 #toolboxCardTitle {
-    color: #f1f3f7;
+    color: #f0f2f5;
     font-size: 13px;
-    font-weight: bold;
+    font-weight: 600;
 }
 #toolboxCardDescription {
-    color: #aab0bf;
+    color: #a8adb8;
     font-size: 11px;
 }
 #toolboxCountBadge {
-    background-color: #355d85;
-    color: #eef5ff;
-    border-radius: 8px;
+    background-color: #3a5478;
+    color: #e8eef8;
+    border-radius: 6px;
     padding: 2px 8px;
     font-size: 10px;
-    font-weight: bold;
+    font-weight: 500;
 }
 QToolButton#toolboxExpandButton {
-    background-color: rgba(255, 255, 255, 0.06);
-    border: 1px solid #4a4a68;
+    background-color: rgba(255, 255, 255, 0.05);
+    border: 1px solid #3a3a48;
     border-radius: 16px;
     padding: 0;
 }
 QToolButton#toolboxExpandButton:hover {
-    background-color: rgba(255, 255, 255, 0.12);
-    border-color: #5d7ca0;
+    background-color: rgba(255, 255, 255, 0.09);
+    border-color: #4a5a70;
 }
 QToolButton#toolboxExpandButton:pressed {
-    background-color: rgba(255, 255, 255, 0.18);
+    background-color: rgba(255, 255, 255, 0.12);
 }
 #toolboxAppsContainer {
-    background-color: rgba(0, 0, 0, 0.10);
-    border-top: 1px solid rgba(255, 255, 255, 0.06);
+    background-color: rgba(0, 0, 0, 0.15);
+    border-top: 1px solid rgba(255, 255, 255, 0.03);
     border-bottom-left-radius: 10px;
     border-bottom-right-radius: 10px;
 }
 
 /* Card title */
 #appCardTitle {
-    color: #e0e0e0;
+    color: #f0f2f5;
     font-size: 13px;
-    font-weight: bold;
+    font-weight: 600;
 }
 
 /* Card description */
 #appCardDescription {
-    color: #a0a0b0;
+    color: #a8adb8;
     font-size: 11px;
 }
 
@@ -130,110 +121,110 @@ QToolButton#toolboxExpandButton:pressed {
     padding: 2px 8px;
     font-size: 10px;
     color: white;
-    font-weight: bold;
+    font-weight: 500;
 }
 
 /* Card run button */
 #appCardRunButton {
-    background-color: #4CAF50;
+    background-color: #4a9d6f;
     color: white;
     border: none;
     border-radius: 4px;
-    padding: 4px 12px;
-    font-weight: bold;
+    padding: 5px 14px;
+    font-weight: 500;
     font-size: 11px;
 }
 #appCardRunButton:hover {
-    background-color: #66BB6A;
+    background-color: #5bb382;
 }
 #appCardRunButton:disabled {
-    background-color: #555555;
-    color: #888888;
+    background-color: #4a4a58;
+    color: #7a7a88;
 }
 
 /* App host header */
 #appHeader {
     font-size: 16px;
-    font-weight: bold;
-    color: #e0e0e0;
+    font-weight: 600;
+    color: #f0f2f5;
     margin-bottom: 4px;
 }
 
 #appDescription {
-    color: #a0a0b0;
+    color: #a8adb8;
     font-size: 11px;
 }
 
 /* Run button inside app view */
 #appRunButton {
-    background-color: #4CAF50;
+    background-color: #4a9d6f;
     color: white;
     border: none;
     border-radius: 6px;
     padding: 8px 20px;
-    font-weight: bold;
-    font-size: 13px;
+    font-weight: 500;
+    font-size: 12px;
 }
 #appRunButton:hover {
-    background-color: #66BB6A;
+    background-color: #5bb382;
 }
 #appRunButton:disabled {
-    background-color: #555555;
-    color: #888888;
+    background-color: #4a4a58;
+    color: #7a7a88;
 }
 
 /* Output area */
 #appOutputArea {
-    background-color: #1a1a2e;
-    color: #c0c0c0;
-    border: 1px solid #3d3d5c;
+    background-color: #1a1a24;
+    color: #c0c0c8;
+    border: 1px solid #2f2f3d;
     border-radius: 4px;
-    font-family: Consolas, "Courier New", monospace;
+    font-family: "Consolas", "Monaco", "Courier New", monospace;
     font-size: 11px;
-    padding: 4px;
+    padding: 8px;
 }
 
 /* Back button */
 #qgarageBackButton {
     background-color: transparent;
-    color: #a0a0b0;
-    border: 1px solid #3d3d5c;
+    color: #a8adb8;
+    border: 1px solid #2f2f3d;
     border-radius: 4px;
-    padding: 4px 10px;
+    padding: 5px 12px;
     font-size: 11px;
 }
 #qgarageBackButton:hover {
-    color: #e0e0e0;
-    border-color: #5c5c8a;
+    color: #f0f2f5;
+    border-color: #4a5a70;
 }
 
 /* Progress bar */
 QProgressBar {
-    background-color: #2d2d3f;
-    border: 1px solid #3d3d5c;
+    background-color: #2a2a34;
+    border: 1px solid #2f2f3d;
     border-radius: 4px;
     text-align: center;
-    color: #e0e0e0;
+    color: #e0e0e8;
     font-size: 10px;
 }
 QProgressBar::chunk {
-    background-color: #4CAF50;
+    background-color: #4a9d6f;
     border-radius: 3px;
 }
 
 /* Labels */
 QLabel {
-    color: #e0e0e0;
+    color: #f0f2f5;
 }
 
 /* Group box */
 QGroupBox {
-    color: #c0c0c0;
-    border: 1px solid #3d3d5c;
+    color: #d0d0d8;
+    border: 1px solid #2f2f3d;
     border-radius: 6px;
     margin-top: 8px;
     padding-top: 12px;
-    font-weight: bold;
+    font-weight: 500;
 }
 QGroupBox::title {
     subcontrol-origin: margin;
