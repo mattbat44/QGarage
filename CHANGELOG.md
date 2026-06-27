@@ -1,5 +1,12 @@
 # QGarage Changelog
 
+## [2.1.3] - 2026-06-26
+
+### Fixed
+- Sanitize inherited QGIS Python environment variables before verifying `uv`
+- Verify `uv --version` without a console window on Windows for consistency with other bridge subprocesses
+- Convert uv verification timeouts and subprocess failures into plugin-level availability errors instead of crashing plugin startup
+
 ## [2.1.0] - 2026-06-20
 
 ### Added
