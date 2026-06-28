@@ -2,6 +2,8 @@
 
 A lightweight plugin for QGIS (3.28+) that provides a unified dashboard for installing, managing, and running isolated mini-tools ("Apps"). QGarage enables rapid development and deployment of geospatial analysis tools without the overhead of traditional QGIS plugin architecture.
 
+Check out ([ArcGarage](https://github.com/mattbat44/ArcGarage)) to connect the exact same apps into ArcGIS Pro, running in the same environments, with no changes necessary. Make development twice as easy, please twice the number of people!
+
 ## ✨ Key Features
 
 - **📦 Modular App System** — Install and manage multiple self-contained tools from a single dashboard
