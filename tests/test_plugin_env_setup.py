@@ -23,12 +23,29 @@ class DummyAction:
         pass
 
 
+class DummyStatusBar:
+    """Minimal stand-in for StatusBarWidget used in plugin tests."""
+
+    def __init__(self):
+        self.uv_install_requested = DummySignal()
+        self.pixi_install_requested = DummySignal()
+
+    def set_uv_connected(self, value):
+        pass
+
+    def set_pixi_connected(self, value):
+        pass
+
+
 class DummyDock:
     def __init__(self, iface):
         self.iface = iface
         self.install_requested = DummySignal()
         self.new_app_requested = DummySignal()
+        self.refresh_app_requested = DummySignal()
+        self.global_refresh_requested = DummySignal()
         self.visibilityChanged = DummySignal()
+        self.status_bar = DummyStatusBar()
         self.registry = None
 
     def set_registry(self, registry):

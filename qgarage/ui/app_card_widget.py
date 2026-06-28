@@ -4,9 +4,11 @@ from typing import Optional
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (
+    QAction,
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSizePolicy,
     QVBoxLayout,
@@ -25,6 +27,9 @@ class AppCardWidget(QFrame):
 
     run_clicked = pyqtSignal(str)
     reset_clicked = pyqtSignal(str)
+    #: Emitted when the user chooses "Refresh App" from the right-click menu.
+    #: The plugin handles environment teardown + reinstall.
+    refresh_clicked = pyqtSignal(str)
 
     def __init__(
         self,
@@ -175,3 +180,24 @@ class AppCardWidget(QFrame):
                 event.accept()
                 return
         super().mouseReleaseEvent(event)
+
+    def contextMenuEvent(self, event):
+        """Show a right-click context menu with app management actions."""
+        menu = QMenu(self)
+
+        open_action = QAction("Open", self)
+        open_action.setEnabled(self._run_button.isEnabled())
+        open_action.triggered.connect(lambda: self.run_clicked.emit(self.app_id))
+        menu.addAction(open_action)
+
+        menu.addSeparator()
+
+        refresh_action = QAction("↺  Refresh App", self)
+        refresh_action.setToolTip(
+            "Wipe the cached environment and reinstall all dependencies,"
+            " then reload the app."
+        )
+        refresh_action.triggered.connect(lambda: self.refresh_clicked.emit(self.app_id))
+        menu.addAction(refresh_action)
+
+        menu.exec(event.globalPos())
