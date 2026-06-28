@@ -17,6 +17,7 @@ from ..core.app_registry import AppEntry, AppRegistry
 from ..themes.theme_manager import ThemeManager
 from .app_card_widget import AppCardWidget
 from .app_host_widget import AppHostWidget
+from .status_bar_widget import StatusBarWidget
 from .toolbox_card_widget import ToolboxCardWidget
 
 logger = logging.getLogger("qgarage.dashboard")
@@ -33,6 +34,10 @@ class DashboardDock(QgsDockWidget):
     install_requested = pyqtSignal()
     new_app_requested = pyqtSignal()
     settings_requested = pyqtSignal()
+    #: Emitted when the user right-clicks an app card and chooses "Refresh App".
+    refresh_app_requested = pyqtSignal(str)
+    #: Emitted when the user clicks the global ↺ reload button.
+    global_refresh_requested = pyqtSignal()
 
     def __init__(self, iface: QgisInterface, parent=None):
         super().__init__("QGarage", parent or iface.mainWindow())
@@ -81,6 +86,18 @@ class DashboardDock(QgsDockWidget):
         self.new_app_button.clicked.connect(self.new_app_requested.emit)
         toolbar_layout.addWidget(self.new_app_button)
 
+        toolbar_layout.addStretch()
+
+        self.reload_button = QPushButton("↺")
+        self.reload_button.setObjectName("qgarageReloadButton")
+        self.reload_button.setToolTip(
+            "Reload QGarage — equivalent to the Plugin Reloader.\n"
+            "Re-imports all modules, rediscovers apps, and resets all state."
+        )
+        self.reload_button.setFixedWidth(28)
+        self.reload_button.clicked.connect(self.global_refresh_requested.emit)
+        toolbar_layout.addWidget(self.reload_button)
+
         main_layout.addWidget(self._toolbar)
 
         # --- Stacked widget: cards view + app host view ---
@@ -121,6 +138,12 @@ class DashboardDock(QgsDockWidget):
         self._stack.addWidget(self._app_host)
 
         main_layout.addWidget(self._stack, stretch=1)
+
+        # --- Bottom status bar: uv / pixi indicators ---
+        self.status_bar = StatusBarWidget()
+        self.status_bar.setObjectName("qgarageStatusBar")
+        main_layout.addWidget(self.status_bar)
+
         self.setWidget(container)
 
     # --- Card management ---
@@ -177,6 +200,7 @@ class DashboardDock(QgsDockWidget):
             )
             card.run_clicked.connect(self._on_app_run)
             card.reset_clicked.connect(self._on_app_reset)
+            card.refresh_clicked.connect(self.refresh_app_requested.emit)
             self._cards[app_id] = card
             # Insert before the stretch
             self.card_layout.insertWidget(self.card_layout.count() - 1, card)
@@ -189,6 +213,7 @@ class DashboardDock(QgsDockWidget):
         )
         card.run_clicked.connect(self._on_app_run)
         card.reset_clicked.connect(self._on_app_reset)
+        card.refresh_clicked.connect(self.refresh_app_requested.emit)
         self._cards[entry.app_id] = card
         self.card_layout.insertWidget(self.card_layout.count() - 1, card)
 

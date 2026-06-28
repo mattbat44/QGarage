@@ -9,7 +9,7 @@ from qgis.gui import QgisInterface
 from qgis.PyQt import sip
 from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
-from qgis.PyQt.QtWidgets import QAction
+from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error, log_info
@@ -20,6 +20,7 @@ from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
 from .workers.env_setup_worker import EnvSetupWorker
+from .workers.install_tool_worker import InstallToolWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
 APPS_DIR = Path(PLUGIN_DIR) / "apps"
@@ -37,6 +38,8 @@ class QGaragePlugin:
         self.uv_bridge: Optional[UvBridge] = None
         self.pixi_bridge = None
         self._env_workers: dict[str, EnvSetupWorker] = {}
+        # One active tool-install worker at a time (uv or pixi)
+        self._install_tool_worker: Optional[InstallToolWorker] = None
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -80,6 +83,15 @@ class QGaragePlugin:
                 self._prepare_app_environment_async(entry)
         self.dock.install_requested.connect(self._on_install_requested)
         self.dock.new_app_requested.connect(self._on_new_app_requested)
+        self.dock.refresh_app_requested.connect(self._on_refresh_app_requested)
+        self.dock.global_refresh_requested.connect(self._on_global_refresh)
+        self.dock.status_bar.uv_install_requested.connect(
+            lambda: self._on_tool_install_requested("uv")
+        )
+        self.dock.status_bar.pixi_install_requested.connect(
+            lambda: self._on_tool_install_requested("pixi")
+        )
+        self._update_status_bar()
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.setVisible(False)
         self.dock.visibilityChanged.connect(self.action.setChecked)
@@ -123,6 +135,11 @@ class QGaragePlugin:
         self.uv_bridge = None
         self.pixi_bridge = None
         self._env_workers.clear()
+        if self._install_tool_worker is not None:
+            with contextlib.suppress(Exception):
+                self._install_tool_worker.quit()
+                self._install_tool_worker.wait()
+            self._install_tool_worker = None
         log_info("Plugin unload completed", "plugin")
 
     def _stop_env_workers(self) -> None:
@@ -267,7 +284,9 @@ class QGaragePlugin:
             self.dock.add_card(entry)
             self._prepare_app_environment_async(entry)
 
-    def _prepare_app_environment_async(self, entry: AppEntry) -> None:
+    def _prepare_app_environment_async(
+        self, entry: AppEntry, *, clean: bool = False
+    ) -> None:
         if self.registry is None or self.dock is None:
             return
 
@@ -289,7 +308,13 @@ class QGaragePlugin:
             self.dock.update_card_state(entry.app_id)
             return
 
-        worker = EnvSetupWorker(entry.app_id, entry.app_dir, bridge, parent=self.dock)
+        worker = EnvSetupWorker(
+            entry.app_id,
+            entry.app_dir,
+            bridge,
+            parent=self.dock,
+            clean=clean,
+        )
         worker.setup_finished.connect(self._on_env_setup_finished)
         worker.finished.connect(worker.deleteLater)
         self._env_workers[entry.app_id] = worker
@@ -315,6 +340,184 @@ class QGaragePlugin:
             log_error(f"Environment setup failed for {app_id}: {error_text}")
 
         self.dock.update_card_state(app_id)
+
+    def _on_refresh_app_requested(self, app_id: str) -> None:
+        """Wipe the cached env for *app_id* then rebuild it from scratch."""
+        if self.registry is None or self.dock is None:
+            return
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        # If the app is currently open, close it first
+        if app_id == self.dock._current_app_id:
+            self.dock._app_host.clear()
+            self.dock._current_app_id = None
+            self.dock._show_cards()
+
+        self.registry.unload_app(app_id)
+        # clean=True tells EnvSetupWorker to delete .venv / .pixi before reinstalling
+        self._prepare_app_environment_async(entry, clean=True)
+        self.dock.update_card_state(app_id)
+
+    def _on_global_refresh(self) -> None:
+        """Reload the entire QGarage plugin — equivalent to Plugin Reloader.
+
+        Locates the plugin's own entry in ``qgis.utils.plugins`` so that it
+        works regardless of the exact installed folder name.
+        """
+        try:
+            import qgis.utils as _qu  # noqa: PLC0415
+
+            plugin_name: Optional[str] = None
+            for name, obj in _qu.plugins.items():
+                if obj is self:
+                    plugin_name = name
+                    break
+
+            if plugin_name:
+                log_info(f"Global refresh: reloading plugin '{plugin_name}'", "plugin")
+                _qu.reloadPlugin(plugin_name)
+            else:
+                # Fallback: re-discover without a full module reload
+                log_info(
+                    "Global refresh: plugin name not found, doing soft refresh",
+                    "plugin",
+                )
+                self._soft_refresh()
+        except Exception as exc:
+            log_error(f"Global refresh failed: {exc}")
+
+    def _soft_refresh(self) -> None:
+        """Re-discover and reload all apps without a full module reload."""
+        if self.registry is None or self.dock is None:
+            return
+        self._stop_env_workers()
+        self.registry.unload_all()
+        self.registry.discover()
+        self.dock.refresh_cards()
+        for entry in self.registry.iter_entries():
+            self._prepare_app_environment_async(entry)
+
+    # ------------------------------------------------------------------
+    # Tool installation (uv / pixi)
+    # ------------------------------------------------------------------
+
+    def _on_tool_install_requested(self, tool: str) -> None:
+        """Ask the user for consent, then install the tool in a background thread."""
+        if self.dock is None:
+            return
+
+        if tool == "uv":
+            install_url = "https://docs.astral.sh/uv/"
+            install_cmd_display = (
+                "Linux/macOS: curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+                "Windows    : irm https://astral.sh/uv/install.ps1 | iex"
+            )
+        else:
+            install_url = "https://pixi.sh"
+            install_cmd_display = (
+                "Linux/macOS: curl -fsSL https://pixi.sh/install.sh | bash\n"
+                "Windows    : iwr -useb https://pixi.sh/install.ps1 | iex"
+            )
+
+        msg = QMessageBox(self.iface.mainWindow())
+        msg.setWindowTitle(f"Install {tool}?")
+        msg.setIcon(QMessageBox.Icon.Question)
+        msg.setText(
+            f"<b>{tool}</b> was not found on your system.\n\n"
+            "QGarage can install it now using the official installer script "
+            f"from <a href='{install_url}'>{install_url}</a>."
+        )
+        msg.setDetailedText(
+            f"The following command will be run:\n\n{install_cmd_display}"
+        )
+        msg.setStandardButtons(
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        msg.setDefaultButton(QMessageBox.StandardButton.No)
+        if msg.exec() != QMessageBox.StandardButton.Yes:
+            return
+
+        self._run_tool_install(tool)
+
+    def _run_tool_install(self, tool: str) -> None:
+        """Launch InstallToolWorker for *tool*."""
+        if self._install_tool_worker is not None:
+            # A previous install is still running
+            return
+
+        worker = InstallToolWorker(tool, parent=self.dock)
+        worker.install_finished.connect(self._on_tool_install_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._install_tool_worker = worker
+        worker.start()
+        log_info(f"Started {tool} installation worker", "plugin")
+
+    def _on_tool_install_finished(
+        self, tool: str, success: bool, error_text: str
+    ) -> None:
+        self._install_tool_worker = None
+
+        if not success:
+            log_error(f"{tool} installation failed: {error_text}")
+            QMessageBox.critical(
+                self.iface.mainWindow() if self.iface else None,
+                f"Install {tool} failed",
+                f"Could not install {tool}:\n\n{error_text}\n\n"
+                "Please install it manually and restart QGIS.",
+            )
+            return
+
+        log_info(f"{tool} installed successfully", "plugin")
+
+        # Re-attempt to create the bridge for the newly installed tool
+        if tool == "uv" and self.uv_bridge is None:
+            try:
+                self.uv_bridge = UvBridge(get_uv_executable())
+            except RuntimeError as e:
+                log_error(f"uv still not available after install: {e}")
+        elif tool == "pixi" and self.pixi_bridge is None:
+            try:
+                from .core.pixi_bridge import PixiBridge
+
+                self.pixi_bridge = PixiBridge(get_pixi_executable())
+            except RuntimeError as e:
+                log_error(f"pixi still not available after install: {e}")
+
+        # Update status bar indicators
+        self._update_status_bar()
+
+        # If we now have at least one bridge, ensure the registry exists
+        if self.registry is None and (
+            self.uv_bridge is not None or self.pixi_bridge is not None
+        ):
+            apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+            self.registry = AppRegistry(apps_dir, self.uv_bridge, self.pixi_bridge)
+            self.registry.discover()
+            if self.dock is not None:
+                self.dock.set_registry(self.registry)
+                for entry in self.registry.iter_entries():
+                    self._prepare_app_environment_async(entry)
+            self._register_processing_provider()
+        elif self.registry is not None:
+            # Update the registry's bridge references
+            self.registry.uv_bridge = self.uv_bridge
+            self.registry.pixi_bridge = self.pixi_bridge
+
+        QMessageBox.information(
+            self.iface.mainWindow() if self.iface else None,
+            f"{tool} installed",
+            f"{tool} was installed successfully.\n\n"
+            "Apps that require this tool are now available.",
+        )
+
+    def _update_status_bar(self) -> None:
+        """Sync the dock's status bar with current bridge availability."""
+        if self.dock is None:
+            return
+        self.dock.status_bar.set_uv_connected(self.uv_bridge is not None)
+        self.dock.status_bar.set_pixi_connected(self.pixi_bridge is not None)
 
     def _on_new_app_requested(self):
         apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
