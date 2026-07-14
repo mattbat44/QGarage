@@ -220,16 +220,13 @@ class QGaragePlugin:
         if hasattr(registry, "providers"):
             try:
                 for existing_provider in list(registry.providers()):
-                    try:
-                        if existing_provider.id() == "qgarage":
-                            registry.removeProvider(existing_provider)
-                    except Exception:
-                        continue
+                    if existing_provider.id() == "qgarage":
+                        registry.removeProvider(existing_provider)
                 if registry.addProvider(provider):
                     self.processing_provider = provider
                     return
-            except Exception:
-                pass
+            except Exception as e:
+                return ValueError(f"Incurred error: {e}")
 
         self.processing_provider = None
         log_error("Could not register QGarage Processing provider")

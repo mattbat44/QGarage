@@ -769,8 +769,8 @@ def read_stderr_log(stderr_log_path: Path | None) -> str:
                 encoding="utf-8", errors="replace"
             ).strip()
             return content
-    except Exception:
-        pass
+    except Exception as e:
+        return ValueError(f"Incurred the following error: {e}")
     return ""
 
 

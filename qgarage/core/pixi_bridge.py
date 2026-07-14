@@ -195,6 +195,7 @@ class PixiBridge:
                 capture_output=True,
                 text=True,
                 timeout=10,
+                check=True,
                 creationflags=_CREATE_NO_WINDOW,
             )
             log_info(f"pixi version: {result.stdout.strip()}", "pixi_bridge")
