@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import shutil
 from pathlib import Path
@@ -65,5 +67,5 @@ class EnvSetupWorker(QThread):
                 try:
                     shutil.rmtree(env_dir)
                     logger.info("Removed env dir: %s", env_dir)
-                except Exception as exc:  # noqa: BLE001
+                except Exception as exc:
                     logger.warning("Could not remove %s: %s", env_dir, exc)

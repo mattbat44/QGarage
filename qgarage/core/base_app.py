@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 from abc import ABC
 from dataclasses import dataclass, field
@@ -159,7 +161,7 @@ class BaseApp(ABC):
                 return {"status": "success", "message": "Done"}
     """
 
-    def __init__(self, app_meta: dict, app_dir: Path, health: "AppHealth" = None):
+    def __init__(self, app_meta: dict, app_dir: Path, health: AppHealth = None):
         self.app_meta = app_meta
         self.app_dir = app_dir
         self.app_id: str = app_meta["id"]

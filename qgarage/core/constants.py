@@ -1,5 +1,7 @@
 """Constants used throughout QGarage."""
 
+from __future__ import annotations
+
 # File names
 APP_META_FILENAME = "app_meta.json"
 TOOLBOX_META_FILENAME = "toolbox_meta.json"

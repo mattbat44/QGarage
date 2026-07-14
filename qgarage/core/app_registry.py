@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 from types import MappingProxyType
@@ -234,7 +236,7 @@ class AppRegistry:
         """Return a stable list of all registered app entries."""
         return list(self._entries.values())
 
-    def load_app(self, app_id: str) -> Optional["BaseApp"]:
+    def load_app(self, app_id: str) -> Optional[BaseApp]:
         """Load a specific app by ID (lazy)."""
         entry = self._entries.get(app_id)
         if entry is None:
@@ -247,7 +249,7 @@ class AppRegistry:
 
         return self._load_entry(entry)
 
-    def _load_entry(self, entry: AppEntry) -> Optional["BaseApp"]:
+    def _load_entry(self, entry: AppEntry) -> Optional[BaseApp]:
         instance = self.loader.load_app(entry.app_dir, entry.app_meta, entry.health)
         entry.instance = instance
         if instance is not None:

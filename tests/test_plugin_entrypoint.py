@@ -1,5 +1,7 @@
 """Tests for the QGIS plugin entrypoint exposed at package scope."""
 
+from __future__ import annotations
+
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock

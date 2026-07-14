@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import contextlib
 import json
 import os
@@ -367,7 +369,7 @@ class QGaragePlugin:
         works regardless of the exact installed folder name.
         """
         try:
-            import qgis.utils as _qu  # noqa: PLC0415
+            import qgis.utils as _qu
 
             plugin_name: Optional[str] = None
             for name, obj in _qu.plugins.items():

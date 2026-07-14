@@ -53,8 +53,7 @@ class InstallToolWorker(QThread):
         ],
         ("uv", "Windows"): [
             "powershell",
-            "-NoProfile",
-            "-NonInteractive",
+            "-ExecutionPolicy Bypass",
             "-Command",
             "irm https://astral.sh/uv/install.ps1 | iex",
         ],
@@ -70,10 +69,9 @@ class InstallToolWorker(QThread):
         ],
         ("pixi", "Windows"): [
             "powershell",
-            "-NoProfile",
-            "-NonInteractive",
+            "-ExecutionPolicy ByPass",
             "-Command",
-            "iwr -useb https://pixi.sh/install.ps1 | iex",
+            "irm -useb https://pixi.sh/install.ps1 | iex",
         ],
     }
 
@@ -121,7 +119,7 @@ class InstallToolWorker(QThread):
             logger.error(msg)
             self.install_finished.emit(tool, False, msg)
             return
-        except Exception as exc:  # noqa: BLE001
+        except Exception as exc:
             logger.exception("Unexpected error during %s install", tool)
             self.install_finished.emit(tool, False, str(exc))
             return

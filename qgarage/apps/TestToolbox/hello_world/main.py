@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from qgarage.core.base_app import BaseApp, InputType
 
 

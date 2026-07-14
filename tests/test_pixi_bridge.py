@@ -1,6 +1,9 @@
 """Tests for PixiBridge command construction and site-packages resolution."""
 
+from __future__ import annotations
+
 import json
+import os
 import platform
 import subprocess
 from unittest.mock import MagicMock, patch
@@ -11,6 +14,7 @@ from qgarage.core.pixi_bridge import (
     PixiBridge,
     _build_pixi_env,
     _resolve_pixi_executable,
+    _sanitize_windows_path_for_pixi,
 )
 
 # ---------------------------------------------------------------------------
@@ -38,11 +42,14 @@ class TestResolvePixiExecutable:
                 return str(exe)
             return None
 
-        with patch("shutil.which", side_effect=which_side_effect), patch(
-            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN"
-            if platform.system() == "Windows"
-            else "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX",
-            [pixi_bin],
+        with (
+            patch("shutil.which", side_effect=which_side_effect),
+            patch(
+                "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN"
+                if platform.system() == "Windows"
+                else "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX",
+                [pixi_bin],
+            ),
         ):
             result = _resolve_pixi_executable("pixi")
             assert result == str(exe)
@@ -51,10 +58,10 @@ class TestResolvePixiExecutable:
         """When nothing is found, return raw value for _verify_pixi to raise."""
         empty_dir = tmp_path / "empty"
         empty_dir.mkdir()
-        with patch("shutil.which", return_value=None), patch(
-            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN", [empty_dir]
-        ), patch(
-            "qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX", [empty_dir]
+        with (
+            patch("shutil.which", return_value=None),
+            patch("qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_WIN", [empty_dir]),
+            patch("qgarage.core.pixi_bridge._PIXI_CANDIDATE_DIRS_UNIX", [empty_dir]),
         ):
             result = _resolve_pixi_executable("pixi")
             assert result == "pixi"
@@ -106,13 +113,62 @@ def pixi_bridge():
 def test_build_pixi_env_removes_python_poisoning_vars(monkeypatch):
     monkeypatch.setenv("PYTHONHOME", "bad-home")
     monkeypatch.setenv("PYTHONPATH", "bad-path")
+    monkeypatch.setenv("CONDA_PREFIX", "bad-conda")
+    monkeypatch.setenv("CONDA_SHLVL", "2")
+    monkeypatch.setenv("GDAL_DATA", "bad-gdal")
+    monkeypatch.setenv("PROJ_LIB", "bad-proj")
+    monkeypatch.setenv("QT_PLUGIN_PATH", "bad-qt")
     monkeypatch.setenv("PATH", "ok")
 
-    env = _build_pixi_env()
+    if platform.system() == "Windows":
+        with patch(
+            "qgarage.core.pixi_bridge._resolve_pixi_executable",
+            return_value=r"C:\Users\maad\.pixi\bin\pixi.exe",
+        ):
+            env = _build_pixi_env()
+    else:
+        env = _build_pixi_env()
 
     assert "PYTHONHOME" not in env
     assert "PYTHONPATH" not in env
-    assert env["PATH"] == "ok"
+    assert "CONDA_PREFIX" not in env
+    assert "CONDA_SHLVL" not in env
+    assert "GDAL_DATA" not in env
+    assert "PROJ_LIB" not in env
+    assert "QT_PLUGIN_PATH" not in env
+    if platform.system() == "Windows":
+        assert env["PATH"] == r"C:\Users\maad\.pixi\bin"
+    else:
+        assert env["PATH"] == "ok"
+
+
+def test_sanitize_windows_path_for_pixi_drops_qgis_entries(monkeypatch):
+    if platform.system() != "Windows":
+        pytest.skip("Windows-specific PATH sanitization")
+
+    fake_env = {
+        "PATH": os.pathsep.join(
+            [
+                r"C:\PROGRA~1\QGIS40~1.3\apps\qgis\bin",
+                r"C:\Windows\system32",
+                r"C:\Users\maad\AppData\Local\Programs\OSGeo4W\bin",
+                r"C:\Program Files\dotnet",
+            ]
+        )
+    }
+
+    with patch(
+        "qgarage.core.pixi_bridge._resolve_pixi_executable",
+        return_value=r"C:\Users\maad\.pixi\bin\pixi.exe",
+    ):
+        sanitized = _sanitize_windows_path_for_pixi(fake_env)
+
+    parts = sanitized.split(os.pathsep)
+    assert parts[0] == r"C:\Users\maad\.pixi\bin"
+    assert r"C:\Windows\system32" in parts
+    assert r"C:\Program Files\dotnet" in parts
+    assert not any("qgis" in part.lower() for part in parts)
+    assert not any("osgeo4w" in part.lower() for part in parts)
 
 
 class TestEnsureEnv:
@@ -237,6 +293,10 @@ class TestLaunchAppIsolated:
             assert "python" in cmd
             assert str(runner) in cmd
             assert str(config) in cmd
+            env = call_args.kwargs["env"]
+            assert call_args.kwargs["cwd"] == str(tmp_path)
+            assert env["QGARAGE_ENV_BACKEND"] == "pixi"
+            assert "PYTHONPATH" not in env
 
     def test_explicit_manifest_path(self, pixi_bridge, tmp_path):
         runner = tmp_path / "runner.py"
@@ -260,7 +320,7 @@ class TestLaunchAppIsolated:
             manifest_idx = cmd.index("--manifest-path")
             assert cmd[manifest_idx + 1] == str(manifest)
 
-    def test_pythonpath_set_for_site_packages(self, pixi_bridge, tmp_path):
+    def test_pythonpath_not_set_for_site_packages(self, pixi_bridge, tmp_path):
         runner = tmp_path / "runner.py"
         runner.write_text("pass", encoding="utf-8")
 
@@ -282,7 +342,7 @@ class TestLaunchAppIsolated:
             )
 
             env = mock_popen.call_args[1].get("env", {})
-            assert "/fake/site-packages" in env.get("PYTHONPATH", "")
+            assert "PYTHONPATH" not in env
 
     def test_no_uv_flags_in_command(self, pixi_bridge, tmp_path):
         """Pixi commands must not include uv-specific flags."""

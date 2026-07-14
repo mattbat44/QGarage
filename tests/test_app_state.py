@@ -1,5 +1,7 @@
 """Tests for AppState enum and AppHealth state machine."""
 
+from __future__ import annotations
+
 from qgarage.core.app_state import MAX_CONSECUTIVE_ERRORS, AppHealth, AppState
 
 

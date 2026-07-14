@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from qgarage.ui.scaffold_dialog import build_class_name, scaffold_app
 
 

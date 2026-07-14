@@ -1,5 +1,7 @@
 """Maps QGarage InputType to QgsProcessingParameter types."""
 
+from __future__ import annotations
+
 from qgis.core import (
     QgsProcessingParameterBoolean,
     QgsProcessingParameterCrs,

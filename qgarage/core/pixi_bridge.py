@@ -31,6 +31,25 @@ _PIXI_CANDIDATE_DIRS_UNIX = [
     Path("/usr/local/bin"),
 ]
 
+_WINDOWS_PATH_KEEP_PREFIXES = (
+    r"c:\windows",
+    r"c:\program files\windowspowershell",
+    r"c:\program files\dotnet",
+)
+
+_WINDOWS_PATH_DROP_MARKERS = (
+    "\\qgis",
+    "\\osgeo4w",
+    "\\grass",
+    "\\qt5",
+    "\\qt6",
+    "\\python312",
+    "\\python311",
+    "\\python310",
+    "\\python39",
+    "\\python38",
+)
+
 
 def _wrap_windowed_command(command: list[str], keep_open_on_failure: bool) -> list[str]:
     """Wrap a Windows console command so startup failures remain visible."""
@@ -59,10 +78,74 @@ def _build_pixi_env(*, env: Optional[Mapping[str, str]] = None) -> dict[str, str
         "PYTHONCASEOK",
         "PYTHONIOENCODING",
         "PYTHONFAULTHANDLER",
+        "CONDA_PREFIX",
+        "CONDA_DEFAULT_ENV",
+        "CONDA_PROMPT_MODIFIER",
+        "CONDA_EXE",
+        "CONDA_PYTHON_EXE",
+        "CONDA_SHLVL",
     ):
         launch_env.pop(var, None)
 
+    for key in list(launch_env):
+        if key.startswith(("GDAL_", "PROJ_", "CPL_", "GEOTIFF_", "QGIS_", "OGR_")):
+            launch_env.pop(key, None)
+
+    for var in (
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+        "VSI_CACHE",
+        "VSI_CACHE_SIZE",
+    ):
+        launch_env.pop(var, None)
+
+    if platform.system() == "Windows":
+        launch_env["PATH"] = _sanitize_windows_path_for_pixi(launch_env)
+
     return launch_env
+
+
+def _sanitize_windows_path_for_pixi(env: Mapping[str, str]) -> str:
+    """Trim PATH entries that are likely to contaminate pixi-native DLL loading."""
+    path_value = env.get("PATH", "")
+    if not path_value:
+        return path_value
+
+    pixi_exe = _resolve_pixi_executable("pixi")
+    preferred_entries = []
+    pixi_bin = str(Path(pixi_exe).parent)
+    if pixi_bin:
+        preferred_entries.append(pixi_bin)
+
+    keep_entries = []
+    seen = set()
+
+    def _add(entry: str) -> None:
+        normalized = entry.strip().strip('"')
+        if not normalized:
+            return
+        key = normalized.lower()
+        if key in seen:
+            return
+        seen.add(key)
+        keep_entries.append(normalized)
+
+    for entry in preferred_entries:
+        _add(entry)
+
+    for raw_entry in path_value.split(os.pathsep):
+        entry = raw_entry.strip().strip('"')
+        if not entry:
+            continue
+
+        lower_entry = entry.lower()
+        if any(marker in lower_entry for marker in _WINDOWS_PATH_DROP_MARKERS):
+            continue
+
+        if lower_entry.startswith(_WINDOWS_PATH_KEEP_PREFIXES) or lower_entry == ".":
+            _add(entry)
+
+    return os.pathsep.join(keep_entries)
 
 
 def _resolve_pixi_executable(requested: str) -> str:
@@ -221,6 +304,8 @@ class PixiBridge:
             config = json.loads(config_path.read_text(encoding="utf-8"))
             manifest_path = Path(config["app_dir"]) / PIXI_TOML_FILENAME
 
+        app_dir = manifest_path.parent
+
         cmd = [
             self.pixi_exe,
             "run",
@@ -232,14 +317,7 @@ class PixiBridge:
         ]
 
         launch_env = _build_pixi_env()
-
-        if venv_site_packages:
-            existing = launch_env.get("PYTHONPATH", "")
-            launch_env["PYTHONPATH"] = (
-                venv_site_packages + os.pathsep + existing
-                if existing
-                else venv_site_packages
-            )
+        launch_env["QGARAGE_ENV_BACKEND"] = "pixi"
 
         if platform.system() == "Windows":
             creationflags = _CREATE_NEW_CONSOLE if show_window else _CREATE_NO_WINDOW
@@ -247,10 +325,11 @@ class PixiBridge:
             process = _sp.Popen(
                 popen_cmd,
                 env=launch_env,
+                cwd=str(app_dir),
                 creationflags=creationflags,
             )
         else:
-            popen_kwargs: dict = {"env": launch_env}
+            popen_kwargs: dict = {"env": launch_env, "cwd": str(app_dir)}
             if show_window:
                 popen_kwargs["start_new_session"] = True
             process = _sp.Popen(cmd, **popen_kwargs)

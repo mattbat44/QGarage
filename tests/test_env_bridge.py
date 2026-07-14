@@ -1,5 +1,7 @@
 """Tests for EnvBridge protocol and resolve_bridge_for_app factory."""
 
+from __future__ import annotations
+
 import json
 import sys
 import types

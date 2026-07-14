@@ -5,6 +5,8 @@ class hierarchy) without requiring QGIS or uv at runtime. Use them as a
 gate when installing or developing new apps.
 """
 
+from __future__ import annotations
+
 import json
 import textwrap
 from pathlib import Path

@@ -1,10 +1,11 @@
 """
 Isolated subprocess execution for QGarage apps.
 
-Every call to execute_logic() is marshalled into a persistent venv subprocess that:
+Every call to execute_logic() is marshalled into a ``uv run --isolated``
+child process that:
   - opens its own console window (live output visible to the user)
-  - uses a persistent .venv/ with dependencies from requirements.txt pre-installed
-  - uses QGIS's Python interpreter so native packages like GDAL are available
+  - uses the same Python interpreter as QGIS so native packages like GDAL
+    are available without re-installation
   - has all ``qgis.*`` modules stubbed so apps that import them still work
   - captures ``QgsProject.addMapLayer()`` calls and replays them on the
     QGIS main thread after the subprocess finishes
@@ -87,7 +88,7 @@ def serialize_inputs(inputs: dict[str, Any], tmp_dir: Path) -> dict[str, Any]:
 
 
 # ── Embedded runner script ────────────────────────────────────────────────────
-# Written to a temp file and executed by the app's persistent venv python.
+# Written to a temp file and executed by ``uv run --isolated --python <qgis_py>``.
 
 RUNNER_SCRIPT = r'''
 
@@ -100,26 +101,37 @@ import traceback as _tb_mod
 from pathlib import Path
 from unittest.mock import MagicMock
 
-# --- Conda DLL registration and rasterio .libs workaround (Windows only) ---
+# --- Windows DLL registration for native geospatial stacks ---
+_qgarage_backend = os.environ.get("QGARAGE_ENV_BACKEND", "")
+_dll_dir_handles = []
 if sys.platform == "win32":
     _conda_prefix = os.environ.get("CONDA_PREFIX", "")
     if _conda_prefix:
-        for _subdir in ("Library/bin", "Library/mingw-w64/bin", "Library/usr/bin"):
+        # Register only the active environment's DLL directories. For pixi
+        # runs this keeps resolution inside the pixi env; for uv/QGIS-backed
+        # runs it preserves the existing conda-style behavior.
+        for _subdir in (
+            "Library/bin",
+            "Library/mingw-w64/bin",
+            "Library/usr/bin",
+            "Scripts",
+        ):
             _dll_path = os.path.join(_conda_prefix, _subdir)
             if os.path.isdir(_dll_path):
-                os.add_dll_directory(_dll_path)
+                _dll_dir_handles.append(os.add_dll_directory(_dll_path))
 
-    import importlib.util as _ilu
-    _rasterio_spec = _ilu.find_spec("rasterio")
-    if _rasterio_spec and _rasterio_spec.submodule_search_locations:
-        # rasterio/__init__.py scans PATH for gdal*.dll if no .libs dir exists.
-        # With QGIS directories still on PATH, it finds QGIS's older GDAL and
-        # registers it, causing version-mismatch DLL failures. Creating an empty
-        # .libs sentinel makes rasterio skip the PATH scan entirely.
-        os.makedirs(
-            os.path.join(list(_rasterio_spec.submodule_search_locations)[0], ".libs"),
-            exist_ok=True
-        )
+    if _qgarage_backend != "pixi":
+        import importlib.util as _ilu
+        _rasterio_spec = _ilu.find_spec("rasterio")
+        if _rasterio_spec and _rasterio_spec.submodule_search_locations:
+            # rasterio/__init__.py scans PATH for gdal*.dll if no .libs dir exists.
+            # With QGIS directories still on PATH, it finds QGIS's older GDAL and
+            # registers it, causing version-mismatch DLL failures. Creating an empty
+            # .libs sentinel makes rasterio skip the PATH scan entirely.
+            os.makedirs(
+                os.path.join(list(_rasterio_spec.submodule_search_locations)[0], ".libs"),
+                exist_ok=True
+            )
 
 # ── Output path from config (resolved early for crash handling) ───────────────
 # We need this available at module scope so the outer try/except can always
@@ -135,6 +147,74 @@ def _safe_print(*args, **kwargs):
         print(*args, **kwargs)
     except OSError:
         pass
+
+
+def _emit_startup_diagnostics():
+    """Print focused environment diagnostics before app imports."""
+    if os.environ.get("QGARAGE_DEBUG_STARTUP") == "0":
+        return
+
+    _safe_print("[QGarage][diag] startup", flush=True)
+    _safe_print(f"[QGarage][diag] sys.executable={sys.executable}", flush=True)
+    _safe_print(f"[QGarage][diag] sys.version={sys.version.splitlines()[0]}", flush=True)
+    _safe_print(f"[QGarage][diag] cwd={os.getcwd()}", flush=True)
+    _safe_print(f"[QGarage][diag] backend={_qgarage_backend or '<unset>'}", flush=True)
+
+    for _name in (
+        "CONDA_PREFIX",
+        "GDAL_DATA",
+        "GEOTIFF_CSV",
+        "PROJ_LIB",
+        "PROJ_NETWORK",
+        "PYTHONHOME",
+        "PYTHONPATH",
+        "QT_PLUGIN_PATH",
+        "QT_QPA_PLATFORM_PLUGIN_PATH",
+        "USE_PATH_FOR_GDAL_PYTHON",
+    ):
+        _safe_print(
+            f"[QGarage][diag] env {_name}={os.environ.get(_name, '<unset>')}",
+            flush=True,
+        )
+
+    _path_entries = os.environ.get("PATH", "").split(os.pathsep)
+    for _index, _entry in enumerate(_path_entries[:12]):
+        _safe_print(
+            f"[QGarage][diag] PATH[{_index}] exists={os.path.isdir(_entry)} {_entry}",
+            flush=True,
+        )
+
+    _conda_prefix = os.environ.get("CONDA_PREFIX")
+    if _conda_prefix:
+        for _subdir in (
+            "Library/bin",
+            "Library/mingw-w64/bin",
+            "Library/usr/bin",
+            "Scripts",
+        ):
+            _candidate = Path(_conda_prefix) / _subdir
+            _safe_print(
+                f"[QGarage][diag] dll-dir exists={_candidate.is_dir()} {_candidate}",
+                flush=True,
+            )
+            if _candidate.is_dir():
+                _matches = sorted(_candidate.glob("gdal*.dll"))[:5]
+                if _matches:
+                    _safe_print(
+                        "[QGarage][diag] gdal-dlls="
+                        + ", ".join(str(_match) for _match in _matches),
+                        flush=True,
+                    )
+
+    try:
+        import importlib.util as _ilu
+
+        _osgeo_spec = _ilu.find_spec("osgeo")
+        _gdal_spec = _ilu.find_spec("osgeo._gdal")
+        _safe_print(f"[QGarage][diag] find_spec(osgeo)={_osgeo_spec}", flush=True)
+        _safe_print(f"[QGarage][diag] find_spec(osgeo._gdal)={_gdal_spec}", flush=True)
+    except Exception as _diag_exc:
+        _safe_print(f"[QGarage][diag] find_spec failed: {_diag_exc}", flush=True)
 
 
 def _pause_for_user(prompt):
@@ -365,6 +445,8 @@ try:
 
     with open(inputs_path) as _f:
         inputs = _deserialize(json.load(_f))
+
+    _emit_startup_diagnostics()
 
     # ── sys.path setup ────────────────────────────────────────────────────────
 

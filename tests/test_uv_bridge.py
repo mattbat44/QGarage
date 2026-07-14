@@ -1,5 +1,7 @@
 """Tests for UvBridge Windows launch quoting and SSL env sanitization."""
 
+from __future__ import annotations
+
 import json
 import os
 import subprocess
@@ -157,10 +159,9 @@ def test_verify_uv_converts_timeout_to_runtime_error():
 
     with (
         patch("shutil.which", return_value="/usr/bin/uv"),
-        patch("subprocess.run", side_effect=timeout),
+        patch("subprocess.run", side_effect=timeout),pytest.raises(RuntimeError) as exc
     ):
-        with pytest.raises(RuntimeError) as exc:
-            UvBridge("uv")
+        UvBridge("uv")
 
     assert "timed out" in str(exc.value)
 

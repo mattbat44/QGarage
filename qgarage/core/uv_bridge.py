@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import os
 import platform
 import shutil
@@ -384,7 +386,7 @@ class UvBridge:
         requirements_path: Optional[Path] = None,
         venv_site_packages: Optional[str] = None,
         show_window: bool = True,
-    ) -> "subprocess.Popen":
+    ) -> subprocess.Popen:
         """Run an app's execute_logic using the app's persistent venv.
 
         This method uses the PERSISTENT VENV MODEL, not ephemeral execution.

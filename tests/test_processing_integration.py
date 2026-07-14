@@ -1,5 +1,7 @@
 """Tests for QGIS Processing framework integration."""
 
+from __future__ import annotations
+
 from pathlib import Path
 from unittest.mock import Mock, patch
 

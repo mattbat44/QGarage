@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import importlib
 import importlib.util
 import logging
@@ -54,7 +56,7 @@ class AppLoader:
 
     def load_app(
         self, app_dir: Path, app_meta: dict, health: AppHealth
-    ) -> Optional["BaseApp"]:
+    ) -> Optional[BaseApp]:
         """Attempt to load an app. Returns a BaseApp instance or None on failure.
 
         The entire load sequence is wrapped in try/except so a single broken

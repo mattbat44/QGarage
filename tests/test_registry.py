@@ -1,5 +1,7 @@
 """Tests for AppRegistry discovery and app_meta.json validation."""
 
+from __future__ import annotations
+
 import json
 import shutil
 from pathlib import Path

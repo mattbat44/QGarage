@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, Qt, pyqtSignal
 from qgis.PyQt.QtGui import QPixmap
 from qgis.PyQt.QtWidgets import (

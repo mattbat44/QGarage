@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from qgis.PyQt.QtWidgets import (
     QDialog,
     QFormLayout,
