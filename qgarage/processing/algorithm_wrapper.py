@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """QgsProcessingAlgorithm wrapper for QGarage BaseApp instances."""
 
 from __future__ import annotations
@@ -77,7 +79,12 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
 
     def tr(self, string: str) -> str:
         """Translate a string using Qt translation functions."""
-        return QCoreApplication.translate("Processing", string)
+        translator = getattr(QCoreApplication, "translate", None)
+        if isinstance(translator, staticmethod):
+            translator = translator.__func__
+        if callable(translator):
+            return translator("Processing", string)
+        return string
 
     def createInstance(self):
         """Return a new instance of this algorithm."""
@@ -194,6 +201,7 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
                 uv_bridge=None,
                 bridge=self._get_bridge(),
                 keep_open=False,
+                app_instance=app,
             )
             try:
                 result = wait_for_isolated_app_result(
