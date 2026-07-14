@@ -14,10 +14,13 @@ dependencies = [
 [tool.ruff]
 line-length = 88
 format.docstring-code-format = true
-lint.select = ["A", "C4", "E4", "E7", "E9", "F", "FLY", "FURB", "I", "PLE", "PT", "RUF", "SIM", "UP"]
+lint.select = ["A", "C4", "E4", "E7", "E9", "F", "FLY", "FURB", "I", "PLE", "PT", "RUF", "SIM", "UP", "I002"]
 lint.ignore = ["SIM108", "SIM105"]
 lint.per-file-ignores."tests/**" = ["RUF059"]
 lint.per-file-ignores."!tests/**/*.py" = ["PT"]
+# Tell Ruff exactly what to enforce and clean up
+lint.isort.required-imports = ["from __future__ import annotations"]
+
 
 [tool.uv]
 link-mode = "symlink"

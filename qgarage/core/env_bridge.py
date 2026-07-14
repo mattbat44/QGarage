@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Protocol defining the shared interface for environment bridges (uv, pixi)."""
 import subprocess
 from pathlib import Path

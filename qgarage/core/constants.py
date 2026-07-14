@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Constants used throughout QGarage."""
 # File names
 APP_META_FILENAME = "app_meta.json"

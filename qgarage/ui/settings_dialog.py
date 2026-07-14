@@ -11,11 +11,11 @@ from qgis.PyQt.QtWidgets import (
     QVBoxLayout,
 )
 
+from ..core.logger import log_error
 from ..core.package_manager_install import SUPPORTED_PACKAGE_MANAGERS
+from ..core.settings import get_pixi_executable, get_uv_executable, set_setting
 from ..core.uv_bridge import UvBridge
 from ..workers.package_manager_install_worker import PackageManagerInstallWorker
-from ..core.logger import log_error
-from ..core.settings import get_pixi_executable, get_uv_executable, set_setting
 
 
 class SettingsDialog(QDialog):

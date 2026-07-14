@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Maps QGarage InputType to QgsProcessingParameter types."""
 from qgis.core import (
     QgsProcessingParameterBoolean,

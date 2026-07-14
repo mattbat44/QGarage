@@ -1,7 +1,12 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from qgarage.core.base_app import BaseApp, InputType
-from qgarage.core.subprocess_runner import build_app_state_snapshot, build_isolated_run_config
+from qgarage.core.subprocess_runner import (
+    build_app_state_snapshot,
+    build_isolated_run_config,
+)
 
 
 class SnapshotApp(BaseApp):

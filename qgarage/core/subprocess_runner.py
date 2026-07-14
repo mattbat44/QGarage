@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """
 Isolated subprocess execution for QGarage apps.
 

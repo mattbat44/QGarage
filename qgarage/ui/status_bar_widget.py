@@ -1,4 +1,5 @@
 from __future__ import annotations
+
 """Minimal status bar showing uv / pixi connection status at the bottom of the dock.
 
 Each indicator is a small clickable label: ⚡ tool-name.

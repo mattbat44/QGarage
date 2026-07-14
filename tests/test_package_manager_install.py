@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import pytest
 
 from qgarage.core.package_manager_install import (
