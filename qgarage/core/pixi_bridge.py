@@ -1,3 +1,4 @@
+from __future__ import annotations
 """Pixi environment bridge for QGarage apps.
 
 Manages per-app pixi environments that give access to the full conda-forge

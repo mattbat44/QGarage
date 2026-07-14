@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 """Background worker that installs uv or pixi using the system's preferred method.
 
 Install commands used:
@@ -10,7 +12,7 @@ Install commands used:
     Windows       : powershell -Command "iwr -useb https://pixi.sh/install.ps1 | iex"
 """
 
-from __future__ import annotations
+
 
 import logging
 import platform

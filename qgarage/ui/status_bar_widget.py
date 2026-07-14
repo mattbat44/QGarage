@@ -1,12 +1,10 @@
+from __future__ import annotations
 """Minimal status bar showing uv / pixi connection status at the bottom of the dock.
 
 Each indicator is a small clickable label: ⚡ tool-name.
   - Blue  → tool found and verified.
   - Grey  → tool not found; click to install via the system's preferred method.
 """
-
-from __future__ import annotations
-
 import logging
 
 from qgis.PyQt.QtCore import Qt, pyqtSignal

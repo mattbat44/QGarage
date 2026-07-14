@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 """QgsProcessingProvider for QGarage apps."""
-
-from __future__ import annotations
-
 import logging
 
 from qgis.core import QgsProcessingProvider

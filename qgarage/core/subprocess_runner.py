@@ -1,3 +1,4 @@
+from __future__ import annotations
 """
 Isolated subprocess execution for QGarage apps.
 
@@ -16,9 +17,6 @@ Communication between QGIS and the subprocess is via two temp JSON files:
 The ProcessMonitor QThread polls for output.json so QGIS reacts as soon as
 the script finishes, without blocking the UI.
 """
-
-from __future__ import annotations
-
 import json
 import tempfile
 import time
