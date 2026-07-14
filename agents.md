@@ -1,6 +1,4 @@
----
-applyTo: "**"
----
+--
 
 # QGarage App Development Guide for Agents
 
