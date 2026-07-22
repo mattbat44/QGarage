@@ -18,6 +18,8 @@ from urllib.request import (
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
+from ..core.app_update import stamp_install_source
+
 logger = logging.getLogger("qgarage.download_worker")
 
 ALLOWED_DOWNLOAD_SCHEMES = {"http", "https"}
@@ -78,8 +80,6 @@ def _normalize_icon_path(
         shutil.copy2(source_icon, dest_icon_path)
 
     app_meta["icon_path"] = icon_dest_name
-    with open(dest_app_dir / "app_meta.json", "w", encoding="utf-8") as f:
-        json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
 
 class DownloadAndInstallWorker(QThread):
@@ -204,7 +204,15 @@ class DownloadAndInstallWorker(QThread):
         if dest_dir.exists():
             shutil.rmtree(dest_dir)
         shutil.copytree(app_source_dir, dest_dir)
+        app_meta = stamp_install_source(
+            app_meta,
+            source_type="url",
+            source_locator=self.url,
+            app_relpath=str(app_source_dir.relative_to(extract_dir)),
+        )
         _normalize_icon_path(app_meta, app_source_dir, dest_dir)
+        with open(dest_dir / "app_meta.json", "w", encoding="utf-8") as f:
+            json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
         self.progress.emit(100, "Installation complete!")
         self.finished.emit(True, app_id, False)
@@ -253,9 +261,17 @@ class DownloadAndInstallWorker(QThread):
                 if app_meta_file.exists():
                     with open(app_meta_file, encoding="utf-8") as f:
                         app_meta = json.load(f)
+                    app_meta = stamp_install_source(
+                        app_meta,
+                        source_type="url",
+                        source_locator=self.url,
+                        app_relpath=str((toolbox_source_dir / child.name).relative_to(extract_dir)),
+                    )
                     _normalize_icon_path(
                         app_meta, toolbox_source_dir / child.name, child
                     )
+                    with open(app_meta_file, "w", encoding="utf-8") as f:
+                        json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
         self.progress.emit(100, "Toolbox installation complete!")
         self.finished.emit(True, toolbox_id, True)
@@ -323,7 +339,14 @@ class LocalInstallWorker(QThread):
         if dest_dir.exists():
             shutil.rmtree(dest_dir)
         shutil.copytree(self.source_dir, dest_dir)
+        app_meta = stamp_install_source(
+            app_meta,
+            source_type="local",
+            source_locator=str(self.source_dir),
+        )
         _normalize_icon_path(app_meta, self.source_dir, dest_dir)
+        with open(dest_dir / "app_meta.json", "w", encoding="utf-8") as f:
+            json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
         self.progress.emit(100, "Installation complete!")
         self.finished.emit(True, app_id, False)
@@ -372,7 +395,15 @@ class LocalInstallWorker(QThread):
                 if app_meta_file.exists():
                     with open(app_meta_file, encoding="utf-8") as f:
                         app_meta = json.load(f)
+                    app_meta = stamp_install_source(
+                        app_meta,
+                        source_type="local",
+                        source_locator=str(self.source_dir),
+                        app_relpath=child.name,
+                    )
                     _normalize_icon_path(app_meta, self.source_dir / child.name, child)
+                    with open(app_meta_file, "w", encoding="utf-8") as f:
+                        json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
         self.progress.emit(100, "Toolbox installation complete!")
         self.finished.emit(True, toolbox_id, True)

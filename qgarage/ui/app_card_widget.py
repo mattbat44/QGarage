@@ -32,6 +32,8 @@ class AppCardWidget(QFrame):
     #: Emitted when the user chooses "Refresh App" from the right-click menu.
     #: The plugin handles environment teardown + reinstall.
     refresh_clicked = pyqtSignal(str)
+    check_updates_clicked = pyqtSignal(str)
+    update_clicked = pyqtSignal(str)
 
     def __init__(
         self,
@@ -39,6 +41,10 @@ class AppCardWidget(QFrame):
         app_meta: dict,
         health: AppHealth,
         app_dir: Optional[Path] = None,
+        *,
+        update_available: bool = False,
+        available_version: Optional[str] = None,
+        checking_updates: bool = False,
         parent=None,
     ):
         super().__init__(parent)
@@ -46,6 +52,9 @@ class AppCardWidget(QFrame):
         self._app_meta = app_meta
         self._health = health
         self._app_dir = app_dir
+        self._update_available = update_available
+        self._available_version = available_version
+        self._checking_updates = checking_updates
 
         self.setProperty("class", "AppCardWidget")
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -109,11 +118,29 @@ class AppCardWidget(QFrame):
         self._reset_button.clicked.connect(lambda: self.reset_clicked.emit(self.app_id))
         btn_layout.addWidget(self._reset_button)
 
+        self._update_button = QPushButton("Update")
+        self._update_button.setVisible(False)
+        self._update_button.clicked.connect(lambda: self.update_clicked.emit(self.app_id))
+        btn_layout.addWidget(self._update_button)
+
         layout.addLayout(btn_layout)
 
     def update_state(self):
         """Refresh the badge to reflect current AppHealth state."""
         self._update_state_badge()
+        self._update_update_button()
+
+    def set_update_status(
+        self,
+        *,
+        update_available: bool,
+        available_version: Optional[str] = None,
+        checking_updates: bool = False,
+    ) -> None:
+        self._update_available = update_available
+        self._available_version = available_version
+        self._checking_updates = checking_updates
+        self._update_update_button()
 
     def _update_state_badge(self):
         state = self._health.state
@@ -138,6 +165,17 @@ class AppCardWidget(QFrame):
 
         self._reset_button.setVisible(state == AppState.CRASHED)
         self._run_button.setEnabled(state in (AppState.READY, AppState.ERROR))
+
+    def _update_update_button(self) -> None:
+        show_button = self._update_available and not self._checking_updates
+        self._update_button.setVisible(show_button)
+        self._update_button.setEnabled(show_button)
+        if self._available_version:
+            self._update_button.setToolTip(
+                f"Update available: {self._available_version}"
+            )
+        else:
+            self._update_button.setToolTip("")
 
     def _build_icon(self) -> QLabel:
         """Build the icon widget from app_meta icon_path, or a coloured fallback."""
@@ -193,6 +231,21 @@ class AppCardWidget(QFrame):
         menu.addAction(open_action)
 
         menu.addSeparator()
+
+        check_updates_action = QAction("Check for Updates", self)
+        check_updates_action.setEnabled(not self._checking_updates)
+        check_updates_action.triggered.connect(
+            lambda: self.check_updates_clicked.emit(self.app_id)
+        )
+        menu.addAction(check_updates_action)
+
+        if self._update_available:
+            update_label = "Update App"
+            if self._available_version:
+                update_label = f"Update to {self._available_version}"
+            update_action = QAction(update_label, self)
+            update_action.triggered.connect(lambda: self.update_clicked.emit(self.app_id))
+            menu.addAction(update_action)
 
         refresh_action = QAction("↺  Refresh App", self)
         refresh_action.setToolTip(

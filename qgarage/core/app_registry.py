@@ -27,6 +27,9 @@ class AppEntry:
         self.health = AppHealth()
         self.instance: Optional[BaseApp] = None
         self.parent_toolbox_id = parent_toolbox_id
+        self.update_available = False
+        self.available_version: Optional[str] = None
+        self.checking_updates = False
 
     @property
     def app_id(self) -> str:
