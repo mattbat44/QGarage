@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+import textwrap
 
 
 def _load_build_module():
@@ -21,11 +22,14 @@ def _load_build_module():
 def test_update_init_text_uses_managed_apps_dir():
     module = _load_build_module()
 
-    old = (
-        "def classFactory(iface):\n"
-        "    \"\"\"QGIS plugin entry point.\"\"\"\n"
-        "    from .plugin import QGaragePlugin\n\n"
-        "    return QGaragePlugin(iface)\n"
+    old = textwrap.dedent(
+        """\
+        def classFactory(iface):
+            \"\"\"QGIS plugin entry point.\"\"\"
+            from .plugin import QGaragePlugin
+
+            return QGaragePlugin(iface)
+        """
     )
 
     updated = module.update_init_text(old)

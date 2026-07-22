@@ -163,8 +163,9 @@ def test_unload_disconnects_registry_and_clears_workers(monkeypatch):
 def test_init_gui_creates_managed_apps_dir(monkeypatch, tmp_path):
     iface = DummyIface()
     plugin = QGaragePlugin(iface)
-    plugin.APPS_DIR = tmp_path / ".garage"
-    assert not plugin.APPS_DIR.exists()
+    managed_apps_dir = tmp_path / ".garage"
+    monkeypatch.setattr("qgarage.plugin.APPS_DIR", managed_apps_dir)
+    assert not managed_apps_dir.exists()
 
     registry = MagicMock()
     registry.iter_entries.return_value = []
@@ -188,14 +189,15 @@ def test_init_gui_creates_managed_apps_dir(monkeypatch, tmp_path):
 
     plugin.initGui()
 
-    assert plugin.APPS_DIR.exists()
-    assert plugin.APPS_DIR.is_dir()
+    assert managed_apps_dir.exists()
+    assert managed_apps_dir.is_dir()
 
 
 def test_install_dialog_uses_managed_apps_dir(monkeypatch, tmp_path):
     iface = DummyIface()
     plugin = QGaragePlugin(iface)
-    plugin.APPS_DIR = tmp_path / ".garage"
+    managed_apps_dir = tmp_path / ".garage"
+    monkeypatch.setattr("qgarage.plugin.APPS_DIR", managed_apps_dir)
 
     captured: dict[str, object] = {}
 
@@ -211,5 +213,5 @@ def test_install_dialog_uses_managed_apps_dir(monkeypatch, tmp_path):
 
     plugin._on_install_requested()
 
-    assert captured["apps_dir"] == plugin.APPS_DIR
+    assert captured["apps_dir"] == managed_apps_dir
     assert captured["executed"] is True

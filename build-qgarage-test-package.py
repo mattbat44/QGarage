@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -38,14 +39,22 @@ def update_metadata_text(raw: str) -> str:
 
 
 def update_init_text(raw: str) -> str:
-    return raw.replace(
-        "    from .plugin import QGaragePlugin\n\n    return QGaragePlugin(iface)\n",
-        "    from .plugin import QGaragePlugin, get_managed_apps_dir\n\n"
-        "    from pathlib import Path\n"
-        "    plugin = QGaragePlugin(iface)\n"
-        "    plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n"
-        "    plugin.APPS_DIR = get_managed_apps_dir()\n"
-        "    return plugin\n",
+    pattern = re.compile(
+        r"(?m)^(?P<indent>[ \t]*)from \.plugin import QGaragePlugin[ \t]*\n"
+        r"[ \t]*\n"
+        r"(?P=indent)return QGaragePlugin\(iface\)[ \t]*$"
+    )
+    replacement = (
+        "{indent}from .plugin import QGaragePlugin, get_managed_apps_dir\n\n"
+        "{indent}from pathlib import Path\n"
+        "{indent}plugin = QGaragePlugin(iface)\n"
+        "{indent}plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n"
+        "{indent}plugin.APPS_DIR = get_managed_apps_dir()\n"
+        "{indent}return plugin"
+    )
+
+    return pattern.sub(
+        lambda match: replacement.format(indent=match.group("indent")), raw, count=1
     )
 
 
