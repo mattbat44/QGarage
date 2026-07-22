@@ -158,3 +158,58 @@ def test_unload_disconnects_registry_and_clears_workers(monkeypatch):
     assert plugin.registry is None
     assert plugin.dock is None
     assert plugin.action is None
+
+
+def test_init_gui_creates_managed_apps_dir(monkeypatch, tmp_path):
+    iface = DummyIface()
+    plugin = QGaragePlugin(iface)
+    plugin.APPS_DIR = tmp_path / ".garage"
+    assert not plugin.APPS_DIR.exists()
+
+    registry = MagicMock()
+    registry.iter_entries.return_value = []
+
+    monkeypatch.setattr("qgarage.plugin.QAction", DummyAction)
+    monkeypatch.setattr("qgarage.plugin.QIcon", lambda path: path)
+    monkeypatch.setattr("qgarage.plugin.DashboardDock", DummyDock)
+    monkeypatch.setattr(
+        "qgarage.plugin.UvBridge", lambda exe: MagicMock(name="uv_bridge")
+    )
+    monkeypatch.setattr("qgarage.plugin.get_uv_executable", lambda: "uv")
+    monkeypatch.setattr("qgarage.plugin.get_pixi_executable", lambda: "pixi")
+    monkeypatch.setattr(
+        "qgarage.plugin.QGaragePlugin._register_processing_provider",
+        lambda self, icon_path=None: None,
+    )
+    monkeypatch.setattr(
+        "qgarage.plugin.PixiBridge", lambda exe: MagicMock(), raising=False
+    )
+    monkeypatch.setattr("qgarage.plugin.AppRegistry", lambda *args, **kwargs: registry)
+
+    plugin.initGui()
+
+    assert plugin.APPS_DIR.exists()
+    assert plugin.APPS_DIR.is_dir()
+
+
+def test_install_dialog_uses_managed_apps_dir(monkeypatch, tmp_path):
+    iface = DummyIface()
+    plugin = QGaragePlugin(iface)
+    plugin.APPS_DIR = tmp_path / ".garage"
+
+    captured: dict[str, object] = {}
+
+    class DummyInstallDialog:
+        def __init__(self, apps_dir, parent=None):
+            captured["apps_dir"] = apps_dir
+            self.app_installed = DummySignal()
+
+        def exec(self):
+            captured["executed"] = True
+
+    monkeypatch.setattr("qgarage.plugin.InstallDialog", DummyInstallDialog)
+
+    plugin._on_install_requested()
+
+    assert captured["apps_dir"] == plugin.APPS_DIR
+    assert captured["executed"] is True

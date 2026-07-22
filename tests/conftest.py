@@ -1,12 +1,8 @@
-from __future__ import annotations
-
 """Shared fixtures for QGarage tests.
 
 All fixtures here are QGIS-free — they mock the qgis package so that
 the pure-Python core modules can be imported and tested outside QGIS.
 """
-
-from __future__ import annotations
 
 import json
 import sys

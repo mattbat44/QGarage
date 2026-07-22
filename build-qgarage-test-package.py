@@ -40,7 +40,11 @@ def update_metadata_text(raw: str) -> str:
 def update_init_text(raw: str) -> str:
     return raw.replace(
         "    from .plugin import QGaragePlugin\n\n    return QGaragePlugin(iface)\n",
-        '    from .plugin import QGaragePlugin\n\n    plugin = QGaragePlugin(iface)\n    plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n    plugin.APPS_DIR = Path(plugin.PLUGIN_DIR) / "apps"\n    return plugin\n',
+        "    from .plugin import QGaragePlugin, get_managed_apps_dir\n\n"
+        "    plugin = QGaragePlugin(iface)\n"
+        "    plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n"
+        "    plugin.APPS_DIR = get_managed_apps_dir()\n"
+        "    return plugin\n",
     )
 
 
@@ -56,8 +60,7 @@ def prepare_test_plugin_tree(build_root: Path) -> Path:
 
     init_path = target_plugin_dir / "__init__.py"
     init_path.write_text(
-        "from pathlib import Path\n\n"
-        + update_init_text(init_path.read_text(encoding="utf-8")),
+        update_init_text(init_path.read_text(encoding="utf-8")),
         encoding="utf-8",
     )
 
