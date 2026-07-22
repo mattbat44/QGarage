@@ -7,8 +7,25 @@ from qgarage.plugin import QGaragePlugin
 
 
 class DummySignal:
+    def __init__(self):
+        self.callbacks = []
+
     def connect(self, callback):
-        self.callback = callback
+        self.callbacks.append(callback)
+
+
+def test_dummy_signal_tracks_multiple_callbacks():
+    signal = DummySignal()
+    called = []
+
+    assert signal.callbacks == []
+    signal.connect(lambda: called.append("first"))
+    signal.connect(lambda: called.append("second"))
+
+    assert len(signal.callbacks) == 2
+    for callback in signal.callbacks:
+        callback()
+    assert called == ["first", "second"]
 
 
 class DummyAction:
@@ -45,10 +62,13 @@ class DummyDock:
         self.install_requested = DummySignal()
         self.new_app_requested = DummySignal()
         self.refresh_app_requested = DummySignal()
+        self.check_updates_requested = DummySignal()
+        self.update_app_requested = DummySignal()
         self.global_refresh_requested = DummySignal()
         self.visibilityChanged = DummySignal()
         self.status_bar = DummyStatusBar()
         self.registry = None
+        self._current_app_id = None
 
     def set_registry(self, registry):
         self.registry = registry
@@ -58,6 +78,13 @@ class DummyDock:
 
     def update_card_state(self, app_id):
         self.updated_app_id = app_id
+
+    @property
+    def current_app_id(self):
+        return self._current_app_id
+
+    def close_current_app(self):
+        self._current_app_id = None
 
     def deleteLater(self):
         pass
@@ -109,6 +136,10 @@ def test_init_gui_prepares_environments_for_discovered_apps(monkeypatch):
     monkeypatch.setattr(
         "qgarage.plugin.QGaragePlugin._register_processing_provider",
         lambda self, icon_path=None: None,
+    )
+    monkeypatch.setattr(
+        "qgarage.plugin.QGaragePlugin._check_for_app_updates",
+        lambda self, force=False: None,
     )
 
     class DummyPixiBridge:
@@ -183,6 +214,10 @@ def test_init_gui_creates_managed_apps_dir(monkeypatch, tmp_path):
         lambda self, icon_path=None: None,
     )
     monkeypatch.setattr(
+        "qgarage.plugin.QGaragePlugin._check_for_app_updates",
+        lambda self, force=False: None,
+    )
+    monkeypatch.setattr(
         "qgarage.plugin.PixiBridge", lambda exe: MagicMock(), raising=False
     )
     monkeypatch.setattr("qgarage.plugin.AppRegistry", lambda *args, **kwargs: registry)
@@ -215,3 +250,39 @@ def test_install_dialog_uses_managed_apps_dir(monkeypatch, tmp_path):
 
     assert captured["apps_dir"] == managed_apps_dir
     assert captured["executed"] is True
+
+
+def test_init_gui_triggers_update_checks(monkeypatch):
+    iface = DummyIface()
+    plugin = QGaragePlugin(iface)
+
+    registry = MagicMock()
+    registry.iter_entries.return_value = []
+
+    monkeypatch.setattr("qgarage.plugin.QAction", DummyAction)
+    monkeypatch.setattr("qgarage.plugin.QIcon", lambda path: path)
+    monkeypatch.setattr("qgarage.plugin.DashboardDock", DummyDock)
+    monkeypatch.setattr(
+        "qgarage.plugin.UvBridge", lambda exe: MagicMock(name="uv_bridge")
+    )
+    monkeypatch.setattr("qgarage.plugin.get_uv_executable", lambda: "uv")
+    monkeypatch.setattr("qgarage.plugin.get_pixi_executable", lambda: "pixi")
+    monkeypatch.setattr(
+        "qgarage.plugin.QGaragePlugin._register_processing_provider",
+        lambda self, icon_path=None: None,
+    )
+    monkeypatch.setattr(
+        "qgarage.plugin.PixiBridge", lambda exe: MagicMock(), raising=False
+    )
+    monkeypatch.setattr("qgarage.plugin.AppRegistry", lambda *args, **kwargs: registry)
+
+    update_check_calls = []
+    monkeypatch.setattr(
+        plugin,
+        "_check_for_app_updates",
+        lambda force=False: update_check_calls.append(force),
+    )
+
+    plugin.initGui()
+
+    assert update_check_calls == [False]

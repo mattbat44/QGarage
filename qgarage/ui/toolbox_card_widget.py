@@ -26,6 +26,9 @@ class ToolboxCardWidget(QFrame):
 
     app_run_clicked = pyqtSignal(str)
     app_reset_clicked = pyqtSignal(str)
+    app_refresh_clicked = pyqtSignal(str)
+    app_check_updates_clicked = pyqtSignal(str)
+    app_update_clicked = pyqtSignal(str)
 
     def __init__(
         self,
@@ -123,10 +126,19 @@ class ToolboxCardWidget(QFrame):
         # Add app cards
         for app_id, app_entry in self.toolbox_entry.app_entries.items():
             card = AppCardWidget(
-                app_id, app_entry.app_meta, app_entry.health, app_dir=app_entry.app_dir
+                app_id,
+                app_entry.app_meta,
+                app_entry.health,
+                app_dir=app_entry.app_dir,
+                update_available=app_entry.update_available,
+                available_version=app_entry.available_version,
+                checking_updates=app_entry.checking_updates,
             )
             card.run_clicked.connect(self.app_run_clicked.emit)
             card.reset_clicked.connect(self.app_reset_clicked.emit)
+            card.refresh_clicked.connect(self.app_refresh_clicked.emit)
+            card.check_updates_clicked.connect(self.app_check_updates_clicked.emit)
+            card.update_clicked.connect(self.app_update_clicked.emit)
             self._app_cards[app_id] = card
             self._apps_layout.addWidget(card)
 
@@ -234,4 +246,11 @@ class ToolboxCardWidget(QFrame):
         """Refresh a contained app card's badge."""
         card = self._app_cards.get(app_id)
         if card:
+            app_entry = self.toolbox_entry.app_entries.get(app_id)
+            if app_entry is not None:
+                card.set_update_status(
+                    update_available=app_entry.update_available,
+                    available_version=app_entry.available_version,
+                    checking_updates=app_entry.checking_updates,
+                )
             card.update_state()

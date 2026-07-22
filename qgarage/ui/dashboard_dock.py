@@ -38,6 +38,8 @@ class DashboardDock(QgsDockWidget):
     settings_requested = pyqtSignal()
     #: Emitted when the user right-clicks an app card and chooses "Refresh App".
     refresh_app_requested = pyqtSignal(str)
+    check_updates_requested = pyqtSignal(str)
+    update_app_requested = pyqtSignal(str)
     #: Emitted when the user clicks the global ↺ reload button.
     global_refresh_requested = pyqtSignal()
 
@@ -52,6 +54,19 @@ class DashboardDock(QgsDockWidget):
 
         self._build_ui()
         ThemeManager.apply_to_widget(self)
+
+    @property
+    def current_app_id(self) -> Optional[str]:
+        """Return the currently hosted app id, or None when showing cards."""
+        return self._current_app_id
+
+    def close_current_app(self) -> None:
+        """Close the currently hosted app and return to the cards view."""
+        if self._current_app_id is None:
+            return
+        self._app_host.clear()
+        self._current_app_id = None
+        self._show_cards()
 
     def set_registry(self, registry: AppRegistry | None):
         """Set the app registry and populate the card grid."""
@@ -181,6 +196,11 @@ class DashboardDock(QgsDockWidget):
             toolbox_card = ToolboxCardWidget(toolbox_entry)
             toolbox_card.app_run_clicked.connect(self._on_app_run)
             toolbox_card.app_reset_clicked.connect(self._on_app_reset)
+            toolbox_card.app_refresh_clicked.connect(self.refresh_app_requested.emit)
+            toolbox_card.app_check_updates_clicked.connect(
+                self.check_updates_requested.emit
+            )
+            toolbox_card.app_update_clicked.connect(self.update_app_requested.emit)
             self._toolbox_cards[toolbox_id] = toolbox_card
             # Insert before the stretch
             self.card_layout.insertWidget(self.card_layout.count() - 1, toolbox_card)
@@ -198,11 +218,19 @@ class DashboardDock(QgsDockWidget):
                 continue
 
             card = AppCardWidget(
-                app_id, entry.app_meta, entry.health, app_dir=entry.app_dir
+                app_id,
+                entry.app_meta,
+                entry.health,
+                app_dir=entry.app_dir,
+                update_available=entry.update_available,
+                available_version=entry.available_version,
+                checking_updates=entry.checking_updates,
             )
             card.run_clicked.connect(self._on_app_run)
             card.reset_clicked.connect(self._on_app_reset)
             card.refresh_clicked.connect(self.refresh_app_requested.emit)
+            card.check_updates_clicked.connect(self.check_updates_requested.emit)
+            card.update_clicked.connect(self.update_app_requested.emit)
             self._cards[app_id] = card
             # Insert before the stretch
             self.card_layout.insertWidget(self.card_layout.count() - 1, card)
@@ -211,11 +239,19 @@ class DashboardDock(QgsDockWidget):
         """Add a single card (used after installing a new app)."""
         self._empty_label.setVisible(False)
         card = AppCardWidget(
-            entry.app_id, entry.app_meta, entry.health, app_dir=entry.app_dir
+            entry.app_id,
+            entry.app_meta,
+            entry.health,
+            app_dir=entry.app_dir,
+            update_available=entry.update_available,
+            available_version=entry.available_version,
+            checking_updates=entry.checking_updates,
         )
         card.run_clicked.connect(self._on_app_run)
         card.reset_clicked.connect(self._on_app_reset)
         card.refresh_clicked.connect(self.refresh_app_requested.emit)
+        card.check_updates_clicked.connect(self.check_updates_requested.emit)
+        card.update_clicked.connect(self.update_app_requested.emit)
         self._cards[entry.app_id] = card
         self.card_layout.insertWidget(self.card_layout.count() - 1, card)
 
@@ -237,6 +273,14 @@ class DashboardDock(QgsDockWidget):
         """Refresh a single card's badge."""
         card = self._cards.get(app_id)
         if card:
+            if self._registry is not None:
+                entry = self._registry.entries.get(app_id)
+                if entry is not None:
+                    card.set_update_status(
+                        update_available=entry.update_available,
+                        available_version=entry.available_version,
+                        checking_updates=entry.checking_updates,
+                    )
             card.update_state()
             return
 

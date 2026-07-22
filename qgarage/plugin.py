@@ -13,6 +13,11 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
+from .core.app_update import (
+    get_install_source,
+    record_update_check,
+    should_check_for_updates,
+)
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
@@ -21,8 +26,10 @@ from .processing.processing_provider import QGarageProcessingProvider
 from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
+from .workers.app_update_worker import AppUpdateWorker
 from .workers.env_setup_worker import EnvSetupWorker
 from .workers.install_tool_worker import InstallToolWorker
+from .workers.update_check_worker import UpdateCheckWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
 APPS_HOME_DIRNAME = ".garage"
@@ -48,6 +55,8 @@ class QGaragePlugin:
         self.uv_bridge: Optional[UvBridge] = None
         self.pixi_bridge = None
         self._env_workers: dict[str, EnvSetupWorker] = {}
+        self._update_check_workers: dict[str, UpdateCheckWorker] = {}
+        self._update_workers: dict[str, AppUpdateWorker] = {}
         # One active tool-install worker at a time (uv or pixi)
         self._install_tool_worker: Optional[InstallToolWorker] = None
 
@@ -111,6 +120,8 @@ class QGaragePlugin:
         self.dock.install_requested.connect(self._on_install_requested)
         self.dock.new_app_requested.connect(self._on_new_app_requested)
         self.dock.refresh_app_requested.connect(self._on_refresh_app_requested)
+        self.dock.check_updates_requested.connect(self._on_check_updates_requested)
+        self.dock.update_app_requested.connect(self._on_update_app_requested)
         self.dock.global_refresh_requested.connect(self._on_global_refresh)
         self.dock.status_bar.uv_install_requested.connect(
             lambda: self._on_tool_install_requested("uv")
@@ -122,10 +133,12 @@ class QGaragePlugin:
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
         self.dock.setVisible(False)
         self.dock.visibilityChanged.connect(self.action.setChecked)
+        self.dock.visibilityChanged.connect(self._on_dock_visibility_changed)
 
         # Register Processing provider
         if self.registry is not None:
             self._register_processing_provider(icon_path=icon_path)
+            self._check_for_app_updates()
 
     def unload(self):
         """Called by QGIS when the plugin is unloaded."""
@@ -162,6 +175,16 @@ class QGaragePlugin:
         self.uv_bridge = None
         self.pixi_bridge = None
         self._env_workers.clear()
+        for worker in self._update_check_workers.values():
+            with contextlib.suppress(Exception):
+                worker.quit()
+                worker.wait()
+        self._update_check_workers.clear()
+        for worker in self._update_workers.values():
+            with contextlib.suppress(Exception):
+                worker.quit()
+                worker.wait()
+        self._update_workers.clear()
         if self._install_tool_worker is not None:
             with contextlib.suppress(Exception):
                 self._install_tool_worker.quit()
@@ -288,6 +311,7 @@ class QGaragePlugin:
             if toolbox_entry is not None:
                 for app_entry in toolbox_entry.app_entries.values():
                     self._prepare_app_environment_async(app_entry)
+                    self._maybe_check_for_app_updates(app_entry)
         else:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
@@ -307,6 +331,7 @@ class QGaragePlugin:
             self.registry.register_entry(entry)
             self.dock.add_card(entry)
             self._prepare_app_environment_async(entry)
+            self._maybe_check_for_app_updates(entry)
 
     def _prepare_app_environment_async(
         self, entry: AppEntry, *, clean: bool = False
@@ -373,15 +398,92 @@ class QGaragePlugin:
         if entry is None:
             return
 
-        # If the app is currently open, close it first
-        if app_id == self.dock._current_app_id:
-            self.dock._app_host.clear()
-            self.dock._current_app_id = None
-            self.dock._show_cards()
+        self._close_app_if_open(app_id)
 
         self.registry.unload_app(app_id)
         # clean=True tells EnvSetupWorker to delete .venv / .pixi before reinstalling
         self._prepare_app_environment_async(entry, clean=True)
+        self.dock.update_card_state(app_id)
+
+    def _on_check_updates_requested(self, app_id: str) -> None:
+        if self.registry is None:
+            return
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+        self._maybe_check_for_app_updates(entry, force=True)
+
+    def _on_update_app_requested(self, app_id: str) -> None:
+        if self.registry is None or self.dock is None:
+            return
+        if app_id in self._update_workers:
+            return
+
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        self._close_app_if_open(app_id)
+
+        self.registry.unload_app(app_id)
+        entry.health.reset()
+        from .core.app_state import AppState
+
+        entry.health.state = AppState.INSTALLING
+        self.dock.update_card_state(app_id)
+
+        worker = AppUpdateWorker(
+            app_id,
+            entry.app_dir,
+            entry.app_meta,
+            parent=self.dock,
+        )
+        worker.update_finished.connect(self._on_app_update_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._update_workers[app_id] = worker
+        worker.start()
+
+    def _on_app_update_finished(
+        self,
+        app_id: str,
+        success: bool,
+        requirements_changed: bool,
+        pixi_changed: bool,
+        error_text: str,
+    ) -> None:
+        if self.registry is None or self.dock is None:
+            self._update_workers.pop(app_id, None)
+            return
+
+        self._update_workers.pop(app_id, None)
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        if not success:
+            entry.health.record_error(error_text)
+            self.dock.update_card_state(app_id)
+            return
+
+        meta_file = entry.app_dir / "app_meta.json"
+        try:
+            with open(meta_file, encoding="utf-8") as f:
+                entry.app_meta = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            entry.health.record_error(f"Updated app metadata could not be loaded: {exc}")
+            self.dock.update_card_state(app_id)
+            return
+        entry.update_available = False
+        entry.available_version = None
+        entry.checking_updates = False
+        self.dock.refresh_cards()
+
+        if requirements_changed or pixi_changed:
+            self._prepare_app_environment_async(entry)
+            return
+
+        self.registry.load_app(app_id)
+        self._refresh_processing_provider()
         self.dock.update_card_state(app_id)
 
     def _on_global_refresh(self) -> None:
@@ -422,6 +524,68 @@ class QGaragePlugin:
         self.dock.refresh_cards()
         for entry in self.registry.iter_entries():
             self._prepare_app_environment_async(entry)
+        self._check_for_app_updates(force=True)
+
+    def _on_dock_visibility_changed(self, visible: bool) -> None:
+        if visible:
+            self._check_for_app_updates()
+
+    def _close_app_if_open(self, app_id: str) -> None:
+        """Close the currently hosted app when it matches ``app_id``."""
+        if self.dock is not None and app_id == self.dock.current_app_id:
+            self.dock.close_current_app()
+
+    def _check_for_app_updates(self, *, force: bool = False) -> None:
+        if self.registry is None:
+            return
+        for entry in self.registry.iter_entries():
+            self._maybe_check_for_app_updates(entry, force=force)
+
+    def _maybe_check_for_app_updates(
+        self, entry: AppEntry, *, force: bool = False
+    ) -> None:
+        if self.dock is None:
+            return
+        if get_install_source(entry.app_meta) is None:
+            entry.checking_updates = False
+            entry.update_available = False
+            entry.available_version = None
+            self.dock.update_card_state(entry.app_id)
+            return
+        if entry.app_id in self._update_check_workers:
+            return
+        if not should_check_for_updates(entry.app_id, force=force):
+            return
+
+        entry.checking_updates = True
+        self.dock.update_card_state(entry.app_id)
+
+        worker = UpdateCheckWorker(entry.app_id, entry.app_meta, parent=self.dock)
+        worker.check_finished.connect(self._on_update_check_finished)
+        worker.finished.connect(worker.deleteLater)
+        self._update_check_workers[entry.app_id] = worker
+        worker.start()
+
+    def _on_update_check_finished(
+        self, app_id: str, available: bool, available_version: str
+    ) -> None:
+        record_update_check(app_id)
+        worker = self._update_check_workers.pop(app_id, None)
+        if worker is not None:
+            with contextlib.suppress(Exception):
+                worker.check_finished.disconnect(self._on_update_check_finished)
+
+        if self.registry is None or self.dock is None:
+            return
+
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        entry.checking_updates = False
+        entry.update_available = available
+        entry.available_version = available_version or None
+        self.dock.update_card_state(app_id)
 
     # ------------------------------------------------------------------
     # Tool installation (uv / pixi)
