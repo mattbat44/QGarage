@@ -41,9 +41,9 @@ def update_init_text(raw: str) -> str:
     return raw.replace(
         "    from .plugin import QGaragePlugin\n\n    return QGaragePlugin(iface)\n",
         "    from .plugin import QGaragePlugin, get_managed_apps_dir\n\n"
-        "    import os\n"
+        "    from pathlib import Path\n"
         "    plugin = QGaragePlugin(iface)\n"
-        "    plugin.PLUGIN_DIR = os.path.dirname(__file__)\n"
+        "    plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n"
         "    plugin.APPS_DIR = get_managed_apps_dir()\n"
         "    return plugin\n",
     )
