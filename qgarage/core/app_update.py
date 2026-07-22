@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import json
 import shutil
 import tempfile
@@ -7,7 +8,8 @@ import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Optional
+import re
+from typing import BinaryIO, Optional
 from urllib.error import URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import (
@@ -34,7 +36,9 @@ INSTALL_SOURCE_APP_RELPATH_KEY = "qgarage_install_source_app_relpath"
 
 ALLOWED_DOWNLOAD_SCHEMES = {"http", "https"}
 UPDATE_CHECK_INTERVAL = timedelta(hours=6)
+REMOTE_ZIP_TIMEOUT_SECONDS = 20
 _SKIP_COPY_NAMES = {VENV_DIR, PIXI_ENV_DIR, "__pycache__"}
+logger = logging.getLogger("qgarage.app_update")
 
 
 @dataclass(frozen=True)
@@ -105,7 +109,11 @@ def get_install_source(app_meta: dict) -> Optional[InstallSource]:
     if not source_type or not locator:
         return None
     app_relpath = (app_meta.get(INSTALL_SOURCE_APP_RELPATH_KEY) or "").strip() or None
-    return InstallSource(source_type=source_type, locator=locator, app_relpath=app_relpath)
+    return InstallSource(
+        source_type=source_type,
+        locator=locator,
+        app_relpath=app_relpath,
+    )
 
 
 def should_check_for_updates(app_id: str, *, force: bool = False) -> bool:
@@ -130,7 +138,10 @@ def should_check_for_updates(app_id: str, *, force: bool = False) -> bool:
 
 def record_update_check(app_id: str) -> None:
     """Persist the timestamp of a completed update check."""
-    set_setting(_update_check_setting_key(app_id), datetime.now(timezone.utc).isoformat())
+    set_setting(
+        _update_check_setting_key(app_id),
+        datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def check_for_app_update(app_meta: dict) -> UpdateCheckResult:
@@ -147,7 +158,9 @@ def check_for_app_update(app_meta: dict) -> UpdateCheckResult:
 
     try:
         available_version = str(snapshot.app_meta.get("version") or "")
-        if available_version and _is_version_newer(available_version, installed_version):
+        if available_version and _is_version_newer(
+            available_version, installed_version
+        ):
             return UpdateCheckResult(
                 available=True,
                 available_version=available_version,
@@ -157,7 +170,9 @@ def check_for_app_update(app_meta: dict) -> UpdateCheckResult:
         snapshot.cleanup()
 
 
-def apply_update_from_source(installed_app_dir: Path, installed_app_meta: dict) -> UpdateApplyResult:
+def apply_update_from_source(
+    installed_app_dir: Path, installed_app_meta: dict
+) -> UpdateApplyResult:
     """Replace installed app files from the recorded source while preserving envs."""
     source = get_install_source(installed_app_meta)
     app_id = str(installed_app_meta.get("id") or "")
@@ -169,7 +184,9 @@ def apply_update_from_source(installed_app_dir: Path, installed_app_meta: dict) 
         raise RuntimeError("The recorded install source is no longer available.")
 
     try:
-        old_requirements = _read_optional_text(installed_app_dir / REQUIREMENTS_FILENAME)
+        old_requirements = _read_optional_text(
+            installed_app_dir / REQUIREMENTS_FILENAME
+        )
         old_pixi = _read_optional_text(installed_app_dir / PIXI_TOML_FILENAME)
 
         _clear_installed_app_dir(installed_app_dir)
@@ -185,7 +202,9 @@ def apply_update_from_source(installed_app_dir: Path, installed_app_meta: dict) 
         _normalize_icon_path(updated_meta, snapshot.app_dir, installed_app_dir)
         _write_json(installed_app_dir / APP_META_FILENAME, updated_meta)
 
-        new_requirements = _read_optional_text(installed_app_dir / REQUIREMENTS_FILENAME)
+        new_requirements = _read_optional_text(
+            installed_app_dir / REQUIREMENTS_FILENAME
+        )
         new_pixi = _read_optional_text(installed_app_dir / PIXI_TOML_FILENAME)
 
         return UpdateApplyResult(
@@ -201,7 +220,7 @@ def _update_check_setting_key(app_id: str) -> str:
     return f"app_update/{app_id}/last_checked"
 
 
-def _open_remote_zip(url: str, timeout: int):
+def _open_remote_zip(url: str, timeout: int) -> BinaryIO:
     parsed = urlparse(url)
     if parsed.scheme not in ALLOWED_DOWNLOAD_SCHEMES:
         raise URLError(
@@ -213,7 +232,9 @@ def _open_remote_zip(url: str, timeout: int):
     return opener.open(req, timeout=timeout)
 
 
-def _resolve_source_snapshot(source: InstallSource, app_id: str) -> Optional[SourceSnapshot]:
+def _resolve_source_snapshot(
+    source: InstallSource, app_id: str
+) -> Optional[SourceSnapshot]:
     if source.source_type == "local":
         return _resolve_local_snapshot(source, app_id)
     if source.source_type == "url":
@@ -221,7 +242,9 @@ def _resolve_source_snapshot(source: InstallSource, app_id: str) -> Optional[Sou
     return None
 
 
-def _resolve_local_snapshot(source: InstallSource, app_id: str) -> Optional[SourceSnapshot]:
+def _resolve_local_snapshot(
+    source: InstallSource, app_id: str
+) -> Optional[SourceSnapshot]:
     source_root = Path(source.locator).expanduser()
     if not source_root.exists():
         return None
@@ -234,17 +257,22 @@ def _resolve_local_snapshot(source: InstallSource, app_id: str) -> Optional[Sour
     return SourceSnapshot(app_dir=app_dir, app_meta=app_meta)
 
 
-def _resolve_remote_snapshot(source: InstallSource, app_id: str) -> Optional[SourceSnapshot]:
+def _resolve_remote_snapshot(
+    source: InstallSource, app_id: str
+) -> Optional[SourceSnapshot]:
     temp_dir = Path(tempfile.mkdtemp(prefix="qgarage_update_"))
     zip_path = temp_dir / "app.zip"
     extract_dir = temp_dir / "extracted"
 
     try:
-        with _open_remote_zip(source.locator, timeout=20) as response:
+        with _open_remote_zip(
+            source.locator, timeout=REMOTE_ZIP_TIMEOUT_SECONDS
+        ) as response:
             with open(zip_path, "wb") as f:
                 shutil.copyfileobj(response, f)
 
         if not zipfile.is_zipfile(zip_path):
+            shutil.rmtree(temp_dir, ignore_errors=True)
             return None
 
         with zipfile.ZipFile(zip_path, "r") as zf:
@@ -257,7 +285,14 @@ def _resolve_remote_snapshot(source: InstallSource, app_id: str) -> Optional[Sou
 
         app_meta = _load_json(app_dir / APP_META_FILENAME)
         return SourceSnapshot(app_dir=app_dir, app_meta=app_meta, temp_dir=temp_dir)
-    except Exception:
+    except (URLError, OSError, zipfile.BadZipFile, json.JSONDecodeError) as exc:
+        logger.debug(
+            "Update source lookup failed for app '%s' from '%s': %s",
+            app_id,
+            source.locator,
+            exc,
+            exc_info=True,
+        )
         shutil.rmtree(temp_dir, ignore_errors=True)
         return None
 
@@ -315,7 +350,9 @@ def _copy_app_contents(source_app_dir: Path, dest_app_dir: Path) -> None:
             shutil.copy2(child, dest_path)
 
 
-def _normalize_icon_path(app_meta: dict, source_app_dir: Path, dest_app_dir: Path) -> None:
+def _normalize_icon_path(
+    app_meta: dict, source_app_dir: Path, dest_app_dir: Path
+) -> None:
     icon_value = (app_meta.get("icon_path") or "").strip()
     if not icon_value:
         return
@@ -350,21 +387,20 @@ def _write_json(path: Path, data: dict) -> None:
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-def _version_key(value: str) -> tuple:
-    parts: list[tuple[int, object]] = []
-    token = ""
-    is_digit_token = None
-    for char in value.strip():
-        char_is_digit = char.isdigit()
-        if is_digit_token is None or char_is_digit == is_digit_token:
-            token += char
-            is_digit_token = char_is_digit
-            continue
-        parts.append((0, int(token)) if is_digit_token else (1, token.lower()))
-        token = char
-        is_digit_token = char_is_digit
-    if token:
-        parts.append((0, int(token)) if is_digit_token else (1, token.lower()))
+def _version_key(value: str) -> tuple[tuple[int, int | str], ...]:
+    """Build a simple mixed numeric/text comparison key for app versions.
+
+    QGarage app versions are expected to be semantic-ish strings such as
+    ``1.2.3``. This tokenizer keeps numeric runs numeric so that ``1.10.0``
+    compares greater than ``1.2.0``, while still providing a stable fallback
+    for mixed suffixes like ``1.0.0-beta1``.
+    """
+    parts: list[tuple[int, int | str]] = []
+    for token in re.findall(r"\d+|[A-Za-z]+", value.strip()):
+        if token.isdigit():
+            parts.append((0, int(token)))
+        else:
+            parts.append((1, token.lower()))
     return tuple(parts)
 
 

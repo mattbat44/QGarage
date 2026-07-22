@@ -13,7 +13,11 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
-from .core.app_update import record_update_check, should_check_for_updates
+from .core.app_update import (
+    get_install_source,
+    record_update_check,
+    should_check_for_updates,
+)
 from .core.app_registry import AppEntry, AppRegistry
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
@@ -394,11 +398,7 @@ class QGaragePlugin:
         if entry is None:
             return
 
-        # If the app is currently open, close it first
-        if app_id == self.dock._current_app_id:
-            self.dock._app_host.clear()
-            self.dock._current_app_id = None
-            self.dock._show_cards()
+        self._close_app_if_open(app_id)
 
         self.registry.unload_app(app_id)
         # clean=True tells EnvSetupWorker to delete .venv / .pixi before reinstalling
@@ -423,10 +423,7 @@ class QGaragePlugin:
         if entry is None:
             return
 
-        if app_id == self.dock._current_app_id:
-            self.dock._app_host.clear()
-            self.dock._current_app_id = None
-            self.dock._show_cards()
+        self._close_app_if_open(app_id)
 
         self.registry.unload_app(app_id)
         entry.health.reset()
@@ -469,8 +466,13 @@ class QGaragePlugin:
             return
 
         meta_file = entry.app_dir / "app_meta.json"
-        with open(meta_file, encoding="utf-8") as f:
-            entry.app_meta = json.load(f)
+        try:
+            with open(meta_file, encoding="utf-8") as f:
+                entry.app_meta = json.load(f)
+        except (OSError, json.JSONDecodeError) as exc:
+            entry.health.record_error(f"Updated app metadata could not be loaded: {exc}")
+            self.dock.update_card_state(app_id)
+            return
         entry.update_available = False
         entry.available_version = None
         entry.checking_updates = False
@@ -528,6 +530,11 @@ class QGaragePlugin:
         if visible:
             self._check_for_app_updates()
 
+    def _close_app_if_open(self, app_id: str) -> None:
+        """Close the currently hosted app when it matches ``app_id``."""
+        if self.dock is not None and app_id == self.dock.current_app_id:
+            self.dock.close_current_app()
+
     def _check_for_app_updates(self, *, force: bool = False) -> None:
         if self.registry is None:
             return
@@ -538,6 +545,12 @@ class QGaragePlugin:
         self, entry: AppEntry, *, force: bool = False
     ) -> None:
         if self.dock is None:
+            return
+        if get_install_source(entry.app_meta) is None:
+            entry.checking_updates = False
+            entry.update_available = False
+            entry.available_version = None
+            self.dock.update_card_state(entry.app_id)
             return
         if entry.app_id in self._update_check_workers:
             return

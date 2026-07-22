@@ -128,7 +128,7 @@ class AppCardWidget(QFrame):
     def update_state(self):
         """Refresh the badge to reflect current AppHealth state."""
         self._update_state_badge()
-        self._update_update_button()
+        self._refresh_update_button()
 
     def set_update_status(
         self,
@@ -140,7 +140,7 @@ class AppCardWidget(QFrame):
         self._update_available = update_available
         self._available_version = available_version
         self._checking_updates = checking_updates
-        self._update_update_button()
+        self._refresh_update_button()
 
     def _update_state_badge(self):
         state = self._health.state
@@ -166,14 +166,12 @@ class AppCardWidget(QFrame):
         self._reset_button.setVisible(state == AppState.CRASHED)
         self._run_button.setEnabled(state in (AppState.READY, AppState.ERROR))
 
-    def _update_update_button(self) -> None:
+    def _refresh_update_button(self) -> None:
         show_button = self._update_available and not self._checking_updates
         self._update_button.setVisible(show_button)
         self._update_button.setEnabled(show_button)
         if self._available_version:
-            self._update_button.setToolTip(
-                f"Update available: {self._available_version}"
-            )
+            self._update_button.setToolTip(f"Update to {self._available_version}")
         else:
             self._update_button.setToolTip("")
 

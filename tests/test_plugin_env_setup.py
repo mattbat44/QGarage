@@ -14,6 +14,20 @@ class DummySignal:
         self.callbacks.append(callback)
 
 
+def test_dummy_signal_tracks_multiple_callbacks():
+    signal = DummySignal()
+    called = []
+
+    assert signal.callbacks == []
+    signal.connect(lambda: called.append("first"))
+    signal.connect(lambda: called.append("second"))
+
+    assert len(signal.callbacks) == 2
+    for callback in signal.callbacks:
+        callback()
+    assert called == ["first", "second"]
+
+
 class DummyAction:
     def __init__(self, *args, **kwargs):
         self.triggered = DummySignal()
@@ -54,6 +68,7 @@ class DummyDock:
         self.visibilityChanged = DummySignal()
         self.status_bar = DummyStatusBar()
         self.registry = None
+        self._current_app_id = None
 
     def set_registry(self, registry):
         self.registry = registry
@@ -63,6 +78,13 @@ class DummyDock:
 
     def update_card_state(self, app_id):
         self.updated_app_id = app_id
+
+    @property
+    def current_app_id(self):
+        return self._current_app_id
+
+    def close_current_app(self):
+        self._current_app_id = None
 
     def deleteLater(self):
         pass

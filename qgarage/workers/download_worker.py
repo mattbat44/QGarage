@@ -82,6 +82,19 @@ def _normalize_icon_path(
     app_meta["icon_path"] = icon_dest_name
 
 
+def _safe_relative_app_path(source_app_dir: Path, source_root: Path) -> str:
+    """Return an app path relative to its source root, with a safe fallback."""
+    try:
+        return str(source_app_dir.relative_to(source_root))
+    except ValueError:
+        logger.warning(
+            "Could not derive app relative path for '%s' beneath '%s'",
+            source_app_dir,
+            source_root,
+        )
+        return source_app_dir.name
+
+
 class DownloadAndInstallWorker(QThread):
     """Worker thread: download ZIP -> extract -> copy to apps dir.
 
@@ -208,7 +221,7 @@ class DownloadAndInstallWorker(QThread):
             app_meta,
             source_type="url",
             source_locator=self.url,
-            app_relpath=str(app_source_dir.relative_to(extract_dir)),
+            app_relpath=_safe_relative_app_path(app_source_dir, extract_dir),
         )
         _normalize_icon_path(app_meta, app_source_dir, dest_dir)
         with open(dest_dir / "app_meta.json", "w", encoding="utf-8") as f:
@@ -265,7 +278,10 @@ class DownloadAndInstallWorker(QThread):
                         app_meta,
                         source_type="url",
                         source_locator=self.url,
-                        app_relpath=str((toolbox_source_dir / child.name).relative_to(extract_dir)),
+                        app_relpath=_safe_relative_app_path(
+                            toolbox_source_dir / child.name,
+                            extract_dir,
+                        ),
                     )
                     _normalize_icon_path(
                         app_meta, toolbox_source_dir / child.name, child

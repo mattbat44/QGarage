@@ -55,6 +55,19 @@ class DashboardDock(QgsDockWidget):
         self._build_ui()
         ThemeManager.apply_to_widget(self)
 
+    @property
+    def current_app_id(self) -> Optional[str]:
+        """Return the currently hosted app id, or None when showing cards."""
+        return self._current_app_id
+
+    def close_current_app(self) -> None:
+        """Close the currently hosted app and return to the cards view."""
+        if self._current_app_id is None:
+            return
+        self._app_host.clear()
+        self._current_app_id = None
+        self._show_cards()
+
     def set_registry(self, registry: AppRegistry | None):
         """Set the app registry and populate the card grid."""
         self._registry = registry
