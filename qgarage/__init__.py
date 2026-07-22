@@ -48,9 +48,9 @@ else:
 
 def classFactory(iface):
     """QGIS plugin entry point."""
-    from .plugin import QGaragePlugin
+    from .plugin import QGaragePlugin, get_managed_apps_dir
 
     plugin = QGaragePlugin(iface)
     plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)
-    plugin.APPS_DIR = Path(plugin.PLUGIN_DIR) / "apps"
+    plugin.APPS_DIR = get_managed_apps_dir()
     return plugin

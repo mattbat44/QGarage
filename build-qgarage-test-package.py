@@ -38,10 +38,35 @@ def update_metadata_text(raw: str) -> str:
 
 
 def update_init_text(raw: str) -> str:
-    return raw.replace(
-        "    from .plugin import QGaragePlugin\n\n    return QGaragePlugin(iface)\n",
-        '    from .plugin import QGaragePlugin\n\n    plugin = QGaragePlugin(iface)\n    plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n    plugin.APPS_DIR = Path(plugin.PLUGIN_DIR) / "apps"\n    return plugin\n',
-    )
+    lines = raw.splitlines()
+    import_idx = None
+    return_idx = None
+    indent = ""
+
+    for idx, line in enumerate(lines):
+        if line.strip() == "from .plugin import QGaragePlugin":
+            import_idx = idx
+            indent = line[: len(line) - len(line.lstrip())]
+            continue
+        if import_idx is not None and line.strip() == "return QGaragePlugin(iface)":
+            return_idx = idx
+            break
+
+    if import_idx is None or return_idx is None or return_idx <= import_idx:
+        return raw
+
+    replacement = [
+        f"{indent}from .plugin import QGaragePlugin, get_managed_apps_dir",
+        "",
+        f"{indent}from pathlib import Path",
+        f"{indent}plugin = QGaragePlugin(iface)",
+        f"{indent}plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)",
+        f"{indent}plugin.APPS_DIR = get_managed_apps_dir()",
+        f"{indent}return plugin",
+    ]
+
+    updated = lines[:import_idx] + replacement + lines[return_idx + 1 :]
+    return "\n".join(updated) + ("\n" if raw.endswith("\n") else "")
 
 
 def prepare_test_plugin_tree(build_root: Path) -> Path:
@@ -56,8 +81,7 @@ def prepare_test_plugin_tree(build_root: Path) -> Path:
 
     init_path = target_plugin_dir / "__init__.py"
     init_path.write_text(
-        "from pathlib import Path\n\n"
-        + update_init_text(init_path.read_text(encoding="utf-8")),
+        update_init_text(init_path.read_text(encoding="utf-8")),
         encoding="utf-8",
     )
 

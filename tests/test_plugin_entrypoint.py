@@ -28,4 +28,4 @@ def test_classfactory_sets_runtime_plugin_paths(monkeypatch):
     plugin = qgarage.classFactory(MagicMock())
 
     assert Path(plugin.PLUGIN_DIR).name == "qgarage"
-    assert Path(plugin.PLUGIN_DIR) / "apps" == plugin.APPS_DIR
+    assert Path.home() / ".garage" == plugin.APPS_DIR

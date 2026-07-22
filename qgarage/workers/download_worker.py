@@ -105,6 +105,8 @@ class DownloadAndInstallWorker(QThread):
     def run(self):
         temp_dir = None
         try:
+            self.apps_dir.mkdir(parents=True, exist_ok=True)
+
             # Phase 1: Download (0-40%)
             self.progress.emit(5, f"Downloading from {self.url}...")
             temp_dir = Path(tempfile.mkdtemp(prefix="qgarage_install_"))
@@ -277,6 +279,8 @@ class LocalInstallWorker(QThread):
 
     def run(self):
         try:
+            self.apps_dir.mkdir(parents=True, exist_ok=True)
+
             # Check for toolbox first
             toolbox_meta_file = self.source_dir / "toolbox_meta.json"
             if toolbox_meta_file.exists():
