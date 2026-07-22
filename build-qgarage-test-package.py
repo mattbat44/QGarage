@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import re
 import shutil
 import zipfile
 from pathlib import Path
@@ -39,23 +38,35 @@ def update_metadata_text(raw: str) -> str:
 
 
 def update_init_text(raw: str) -> str:
-    pattern = re.compile(
-        r"(?m)^(?P<indent>[ \t]*)from \.plugin import QGaragePlugin[ \t]*\n"
-        r"[ \t]*\n"
-        r"(?P=indent)return QGaragePlugin\(iface\)[ \t]*$"
-    )
-    replacement = (
-        "{indent}from .plugin import QGaragePlugin, get_managed_apps_dir\n\n"
-        "{indent}from pathlib import Path\n"
-        "{indent}plugin = QGaragePlugin(iface)\n"
-        "{indent}plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)\n"
-        "{indent}plugin.APPS_DIR = get_managed_apps_dir()\n"
-        "{indent}return plugin"
-    )
+    lines = raw.splitlines()
+    import_idx = None
+    return_idx = None
+    indent = ""
 
-    return pattern.sub(
-        lambda match: replacement.format(indent=match.group("indent")), raw, count=1
-    )
+    for idx, line in enumerate(lines):
+        if line.strip() == "from .plugin import QGaragePlugin":
+            import_idx = idx
+            indent = line[: len(line) - len(line.lstrip())]
+            continue
+        if import_idx is not None and line.strip() == "return QGaragePlugin(iface)":
+            return_idx = idx
+            break
+
+    if import_idx is None or return_idx is None or return_idx <= import_idx:
+        return raw
+
+    replacement = [
+        f"{indent}from .plugin import QGaragePlugin, get_managed_apps_dir",
+        "",
+        f"{indent}from pathlib import Path",
+        f"{indent}plugin = QGaragePlugin(iface)",
+        f"{indent}plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)",
+        f"{indent}plugin.APPS_DIR = get_managed_apps_dir()",
+        f"{indent}return plugin",
+    ]
+
+    updated = lines[:import_idx] + replacement + lines[return_idx + 1 :]
+    return "\n".join(updated) + ("\n" if raw.endswith("\n") else "")
 
 
 def prepare_test_plugin_tree(build_root: Path) -> Path:
