@@ -25,7 +25,15 @@ from .workers.env_setup_worker import EnvSetupWorker
 from .workers.install_tool_worker import InstallToolWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
-APPS_DIR = Path.home() / ".garage"
+APPS_HOME_DIRNAME = ".garage"
+
+
+def get_managed_apps_dir() -> Path:
+    """Return the stable managed app directory in the user's home folder."""
+    return Path.home() / APPS_HOME_DIRNAME
+
+
+APPS_DIR = get_managed_apps_dir()
 
 
 class QGaragePlugin:
@@ -47,6 +55,23 @@ class QGaragePlugin:
         """Called by QGIS when the plugin is loaded."""
         plugin_dir = getattr(self, "PLUGIN_DIR", PLUGIN_DIR)
         apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
+        try:
+            apps_dir.mkdir(parents=True, exist_ok=True)
+        except OSError as exc:
+            log_error(
+                f"Managed apps directory initialization failed for '{apps_dir}' "
+                f"({type(exc).__name__}): {exc}"
+            )
+            # Most common failures: permission denied, read-only filesystem, or
+            # non-directory path collisions at the target location.
+            QMessageBox.critical(
+                self.iface.mainWindow(),
+                "QGarage setup error",
+                f"QGarage could not create or access its managed app directory:\n"
+                f"{apps_dir}\n\nError: {exc}\n\n"
+                "Check folder permissions and ensure the path is not an existing file.",
+            )
+            return
         icon_path = os.path.join(plugin_dir, "icon.svg")
         self.action = QAction(
             QIcon(icon_path),
