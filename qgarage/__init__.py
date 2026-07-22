@@ -52,5 +52,5 @@ def classFactory(iface):
 
     plugin = QGaragePlugin(iface)
     plugin.PLUGIN_DIR = str(Path(__file__).resolve().parent)
-    plugin.APPS_DIR = Path(plugin.PLUGIN_DIR) / "apps"
+    plugin.APPS_DIR = Path.home() / ".garage"
     return plugin

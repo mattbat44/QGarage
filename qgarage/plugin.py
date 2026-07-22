@@ -25,7 +25,7 @@ from .workers.env_setup_worker import EnvSetupWorker
 from .workers.install_tool_worker import InstallToolWorker
 
 PLUGIN_DIR = os.path.dirname(__file__)
-APPS_DIR = Path(PLUGIN_DIR) / "apps"
+APPS_DIR = Path.home() / ".garage"
 
 
 class QGaragePlugin:

@@ -16,6 +16,7 @@ Check out ([ArcGarage](https://github.com/mattbat44/ArcGarage)) to connect the e
 - **📂 Rich Input Types** — Vector layers, raster layers, CRS, files, folders, fields, text areas, dropdowns, and more
 - **🗺️ Direct Layer Delivery** — Return results directly to the QGIS map canvas via `add_output_layer()`
 - **🔌 Easy Installation** — Install apps from ZIP files or local folders without manual setup
+- **🏠 Persistent App Storage** — Installed apps and environments are stored in `~/.garage` so they survive plugin/QGIS reinstalls
 - **⚙️ Processing Framework Integration** — Declarative apps automatically appear in the QGIS Processing Toolbox alongside the dashboard UI
 
 ## 📋 Requirements
