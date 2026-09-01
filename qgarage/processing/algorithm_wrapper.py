@@ -181,6 +181,11 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
                 inputs[spec.key] = None
 
         # Validate inputs
+        error = app._validate_declared_inputs(inputs, for_user=False)
+        if error:
+            feedback.reportError(f"Validation error: {error}")
+            raise ValueError(error)
+
         error = app.validate_inputs(inputs)
         if error:
             feedback.reportError(f"Validation error: {error}")

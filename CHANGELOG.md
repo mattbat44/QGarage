@@ -1,5 +1,20 @@
 # QGarage Changelog
 
+## [2.2.7] - 2026-09-01
+
+### Added
+- Extend the declarative input contract with `optional_for_user` for dashboard-only optional parameters
+- Extend `InputType.VECTOR_LAYER` inputs with `vector_layer_geometry` restrictions for point, line, and polygon workflows
+
+### Changed
+- Apply vector geometry restrictions in both the dashboard widget contract and Processing parameter mapping
+- Share framework-level input validation between dashboard and Processing execution paths
+
+### Backwards Compatibility
+- Existing `add_input()` calls continue to work unchanged
+- `required=False` keeps its current meaning for both dashboard and Processing
+- New contract fields are opt-in only
+
 ## [2.1.3] - 2026-06-26
 
 ### Fixed

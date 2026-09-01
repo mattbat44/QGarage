@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from qgarage.core.base_app import BaseApp, InputType
+from qgarage.core.base_app import BaseApp, InputSpec, InputType
 from qgarage.processing.algorithm_wrapper import BaseAppAlgorithm
 from qgarage.processing.parameter_mapper import create_processing_parameter
 from qgarage.processing.processing_provider import QGarageProcessingProvider
@@ -113,6 +113,73 @@ def test_parameter_mapper_choice():
     assert param.name() == "test_choice"
     assert param.options() == ["Option A", "Option B", "Option C"]
     assert param.defaultValue() == 1  # Index of "Option B"
+
+
+def test_parameter_mapper_vector_layer_geometry_restriction():
+    spec = InputSpec(
+        key="points",
+        label="Point Layer",
+        input_type=InputType.VECTOR_LAYER,
+        vector_layer_geometry="point",
+    )
+
+    param = create_processing_parameter(spec)
+    assert param.kwargs["types"] == [0]
+
+
+def test_declared_input_validation_respects_optional_for_user():
+    class OptionalUserApp(BaseApp):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.add_input(
+                "input_layer",
+                "Input Layer",
+                InputType.VECTOR_LAYER,
+                optional_for_user=True,
+            )
+
+        def execute_logic(self, inputs):
+            return {"status": "success", "message": "ok"}
+
+    app = OptionalUserApp(
+        app_meta={"id": "optional_user", "name": "Optional User"},
+        app_dir=Path("/tmp/optional_user"),
+    )
+
+    assert app._validate_declared_inputs({"input_layer": None}, for_user=True) is None
+    assert "Required input missing" in app._validate_declared_inputs(
+        {"input_layer": None}, for_user=False
+    )
+
+
+def test_declared_input_validation_enforces_vector_geometry_contract():
+    class GeometryApp(BaseApp):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.add_input(
+                "input_layer",
+                "Input Layer",
+                InputType.VECTOR_LAYER,
+                vector_layer_geometry="polygon",
+            )
+
+        def execute_logic(self, inputs):
+            return {"status": "success", "message": "ok"}
+
+    class FakeLayer:
+        def geometryType(self):
+            return "Point"
+
+    app = GeometryApp(
+        app_meta={"id": "geometry_app", "name": "Geometry App"},
+        app_dir=Path("/tmp/geometry_app"),
+    )
+
+    error = app._validate_declared_inputs(
+        {"input_layer": FakeLayer()}, for_user=True
+    )
+    assert error is not None
+    assert "expected polygon" in error
 
 
 def test_algorithm_wrapper_creation():

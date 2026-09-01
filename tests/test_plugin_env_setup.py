@@ -65,6 +65,8 @@ class DummyDock:
         self.check_updates_requested = DummySignal()
         self.update_app_requested = DummySignal()
         self.global_refresh_requested = DummySignal()
+        self.app_prepare_requested = DummySignal()
+        self.tool_install_confirmed = DummySignal()
         self.visibilityChanged = DummySignal()
         self.status_bar = DummyStatusBar()
         self.registry = None
@@ -85,6 +87,9 @@ class DummyDock:
 
     def close_current_app(self):
         self._current_app_id = None
+
+    def open_app(self, app_id):
+        self._current_app_id = app_id
 
     def deleteLater(self):
         pass
@@ -116,7 +121,7 @@ class DummyIface:
         pass
 
 
-def test_init_gui_prepares_environments_for_discovered_apps(monkeypatch):
+def test_init_gui_defers_environment_preparation_for_discovered_apps(monkeypatch):
     iface = DummyIface()
     plugin = QGaragePlugin(iface)
 
@@ -128,11 +133,11 @@ def test_init_gui_prepares_environments_for_discovered_apps(monkeypatch):
     monkeypatch.setattr("qgarage.plugin.QAction", DummyAction)
     monkeypatch.setattr("qgarage.plugin.QIcon", lambda path: path)
     monkeypatch.setattr("qgarage.plugin.DashboardDock", DummyDock)
+    executable_checks = []
     monkeypatch.setattr(
-        "qgarage.plugin.UvBridge", lambda exe: MagicMock(name="uv_bridge")
+        "qgarage.plugin.get_uv_executable",
+        lambda: executable_checks.append("uv") or "uv",
     )
-    monkeypatch.setattr("qgarage.plugin.get_uv_executable", lambda: "uv")
-    monkeypatch.setattr("qgarage.plugin.get_pixi_executable", lambda: "pixi")
     monkeypatch.setattr(
         "qgarage.plugin.QGaragePlugin._register_processing_provider",
         lambda self, icon_path=None: None,
@@ -142,11 +147,6 @@ def test_init_gui_prepares_environments_for_discovered_apps(monkeypatch):
         lambda self, force=False: None,
     )
 
-    class DummyPixiBridge:
-        def __init__(self, exe):
-            self.exe = exe
-
-    monkeypatch.setattr("qgarage.plugin.PixiBridge", DummyPixiBridge, raising=False)
     monkeypatch.setattr("qgarage.plugin.AppRegistry", lambda *args, **kwargs: registry)
 
     prepared = []
@@ -159,7 +159,8 @@ def test_init_gui_prepares_environments_for_discovered_apps(monkeypatch):
     plugin.initGui()
 
     registry.discover.assert_called_once()
-    assert prepared == ["app_a", "app_b"]
+    assert prepared == []
+    assert executable_checks == []
 
 
 def test_unload_disconnects_registry_and_clears_workers(monkeypatch):

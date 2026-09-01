@@ -19,6 +19,7 @@ from .core.app_update import (
     should_check_for_updates,
 )
 from .core.app_registry import AppEntry, AppRegistry
+from .core.constants import PIXI_TOML_FILENAME
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
 from .core.uv_bridge import UvBridge
@@ -59,6 +60,7 @@ class QGaragePlugin:
         self._update_workers: dict[str, AppUpdateWorker] = {}
         # One active tool-install worker at a time (uv or pixi)
         self._install_tool_worker: Optional[InstallToolWorker] = None
+        self._pending_app_open_id: Optional[str] = None
 
     def initGui(self):
         """Called by QGIS when the plugin is loaded."""
@@ -92,37 +94,22 @@ class QGaragePlugin:
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu("&QGarage", self.action)
 
-        # Initialize core
-        try:
-            self.uv_bridge = UvBridge(get_uv_executable())
-        except RuntimeError as e:
-            log_error(f"uv not available: {e}")
-            self.uv_bridge = None
-
-        try:
-            from .core.pixi_bridge import PixiBridge
-
-            self.pixi_bridge = PixiBridge(get_pixi_executable())
-        except RuntimeError as e:
-            log_error(f"pixi not available: {e}")
-            self.pixi_bridge = None
-
-        if self.uv_bridge is not None or self.pixi_bridge is not None:
-            self.registry = AppRegistry(apps_dir, self.uv_bridge, self.pixi_bridge)
-            self.registry.discover()
+        # Discover apps without requiring either optional environment backend.
+        self.registry = AppRegistry(apps_dir)
+        self.registry.discover()
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
         if self.registry is not None:
             self.dock.set_registry(self.registry)
-            for entry in self.registry.iter_entries():
-                self._prepare_app_environment_async(entry)
         self.dock.install_requested.connect(self._on_install_requested)
         self.dock.new_app_requested.connect(self._on_new_app_requested)
         self.dock.refresh_app_requested.connect(self._on_refresh_app_requested)
         self.dock.check_updates_requested.connect(self._on_check_updates_requested)
         self.dock.update_app_requested.connect(self._on_update_app_requested)
         self.dock.global_refresh_requested.connect(self._on_global_refresh)
+        self.dock.app_prepare_requested.connect(self._on_app_prepare_requested)
+        self.dock.tool_install_confirmed.connect(self._run_tool_install)
         self.dock.status_bar.uv_install_requested.connect(
             lambda: self._on_tool_install_requested("uv")
         )
@@ -369,6 +356,50 @@ class QGaragePlugin:
         self._env_workers[entry.app_id] = worker
         worker.start()
 
+    def _on_app_prepare_requested(self, app_id: str) -> None:
+        """Prepare an app only after the user chooses to open it."""
+        if self.registry is None:
+            return
+        entry = self.registry.entries.get(app_id)
+        if entry is None:
+            return
+
+        self._pending_app_open_id = app_id
+        tool = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+        if not self._ensure_tool_bridge(tool):
+            self._on_tool_install_requested(tool)
+            return
+        self._prepare_app_environment_async(entry)
+
+    def _ensure_tool_bridge(self, tool: str) -> bool:
+        """Safely verify and cache a backend only when an app requests it."""
+        if tool == "uv":
+            if self.uv_bridge is not None:
+                return True
+            try:
+                self.uv_bridge = UvBridge(get_uv_executable())
+            except (OSError, RuntimeError) as exc:
+                log_info(f"uv is not available: {exc}", "plugin")
+                return False
+        else:
+            if self.pixi_bridge is not None:
+                return True
+            try:
+                from .core.pixi_bridge import PixiBridge
+
+                self.pixi_bridge = PixiBridge(get_pixi_executable())
+            except (OSError, RuntimeError) as exc:
+                log_info(f"pixi is not available: {exc}", "plugin")
+                return False
+
+        if self.registry is not None:
+            self.registry.uv_bridge = self.uv_bridge
+            self.registry.pixi_bridge = self.pixi_bridge
+            self.registry.loader.uv_bridge = self.uv_bridge
+            self.registry.loader.pixi_bridge = self.pixi_bridge
+        self._update_status_bar()
+        return True
+
     def _on_env_setup_finished(
         self, app_id: str, success: bool, error_text: str
     ) -> None:
@@ -389,6 +420,9 @@ class QGaragePlugin:
             log_error(f"Environment setup failed for {app_id}: {error_text}")
 
         self.dock.update_card_state(app_id)
+        if success and app_id == self._pending_app_open_id:
+            self._pending_app_open_id = None
+            self.dock.open_app(app_id)
 
     def _on_refresh_app_requested(self, app_id: str) -> None:
         """Wipe the cached env for *app_id* then rebuild it from scratch."""
@@ -522,8 +556,6 @@ class QGaragePlugin:
         self.registry.unload_all()
         self.registry.discover()
         self.dock.refresh_cards()
-        for entry in self.registry.iter_entries():
-            self._prepare_app_environment_async(entry)
         self._check_for_app_updates(force=True)
 
     def _on_dock_visibility_changed(self, visible: bool) -> None:
@@ -596,38 +628,15 @@ class QGaragePlugin:
         if self.dock is None:
             return
 
-        if tool == "uv":
-            install_url = "https://docs.astral.sh/uv/"
-            install_cmd_display = (
-                "Linux/macOS: curl -LsSf https://astral.sh/uv/install.sh | sh\n"
-                "Windows    : irm https://astral.sh/uv/install.ps1 | iex"
-            )
-        else:
-            install_url = "https://pixi.sh"
-            install_cmd_display = (
-                "Linux/macOS: curl -fsSL https://pixi.sh/install.sh | bash\n"
-                "Windows    : iwr -useb https://pixi.sh/install.ps1 | iex"
-            )
-
-        msg = QMessageBox(self.iface.mainWindow())
-        msg.setWindowTitle(f"Install {tool}?")
-        msg.setIcon(QMessageBox.Icon.Question)
-        msg.setText(
-            f"<b>{tool}</b> was not found on your system.\n\n"
-            "QGarage can install it now using the official installer script "
-            f"from <a href='{install_url}'>{install_url}</a>."
-        )
-        msg.setDetailedText(
-            f"The following command will be run:\n\n{install_cmd_display}"
-        )
-        msg.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
-        )
-        msg.setDefaultButton(QMessageBox.StandardButton.No)
-        if msg.exec() != QMessageBox.StandardButton.Yes:
+        if self._ensure_tool_bridge(tool):
+            self._resume_pending_app_open(tool)
             return
 
-        self._run_tool_install(tool)
+        if tool == "uv":
+            command = "irm https://astral.sh/uv/install.ps1 | iex"
+        else:
+            command = "irm -useb https://pixi.sh/install.ps1 | iex"
+        self.dock.prompt_tool_install(tool, command)
 
     def _run_tool_install(self, tool: str) -> None:
         """Launch InstallToolWorker for *tool*."""
@@ -637,10 +646,15 @@ class QGaragePlugin:
 
         worker = InstallToolWorker(tool, parent=self.dock)
         worker.install_finished.connect(self._on_tool_install_finished)
+        worker.log_message.connect(self._on_tool_install_log_message)
         worker.finished.connect(worker.deleteLater)
         self._install_tool_worker = worker
         worker.start()
         log_info(f"Started {tool} installation worker", "plugin")
+
+    def _on_tool_install_log_message(self, message: str) -> None:
+        if self.dock is not None:
+            self.dock.set_tool_install_status(message, running=True)
 
     def _on_tool_install_finished(
         self, tool: str, success: bool, error_text: str
@@ -649,56 +663,39 @@ class QGaragePlugin:
 
         if not success:
             log_error(f"{tool} installation failed: {error_text}")
-            QMessageBox.critical(
-                self.iface.mainWindow() if self.iface else None,
-                f"Install {tool} failed",
-                f"Could not install {tool}:\n\n{error_text}\n\n"
-                "Please install it manually and restart QGIS.",
-            )
+            if self.dock is not None:
+                self.dock.set_tool_install_status(
+                    f"Could not install {tool}:\n{error_text}", running=False
+                )
             return
 
         log_info(f"{tool} installed successfully", "plugin")
 
-        # Re-attempt to create the bridge for the newly installed tool
-        if tool == "uv" and self.uv_bridge is None:
-            try:
-                self.uv_bridge = UvBridge(get_uv_executable())
-            except RuntimeError as e:
-                log_error(f"uv still not available after install: {e}")
-        elif tool == "pixi" and self.pixi_bridge is None:
-            try:
-                from .core.pixi_bridge import PixiBridge
-
-                self.pixi_bridge = PixiBridge(get_pixi_executable())
-            except RuntimeError as e:
-                log_error(f"pixi still not available after install: {e}")
-
-        # Update status bar indicators
-        self._update_status_bar()
-
-        # If we now have at least one bridge, ensure the registry exists
-        if self.registry is None and (
-            self.uv_bridge is not None or self.pixi_bridge is not None
-        ):
-            apps_dir = getattr(self, "APPS_DIR", APPS_DIR)
-            self.registry = AppRegistry(apps_dir, self.uv_bridge, self.pixi_bridge)
-            self.registry.discover()
+        if not self._ensure_tool_bridge(tool):
             if self.dock is not None:
-                self.dock.set_registry(self.registry)
-                for entry in self.registry.iter_entries():
-                    self._prepare_app_environment_async(entry)
-            self._register_processing_provider()
-        elif self.registry is not None:
-            # Update the registry's bridge references
-            self.registry.uv_bridge = self.uv_bridge
-            self.registry.pixi_bridge = self.pixi_bridge
+                self.dock.set_tool_install_status(
+                    f"{tool} was installed but could not be verified. Restart QGIS and try again.",
+                    running=False,
+                )
+            return
+        self._resume_pending_app_open(tool)
+        if self.dock is not None:
+            self.dock.set_tool_install_status(
+                f"{tool} installed successfully. Preparing the app...", running=False
+            )
 
-        QMessageBox.information(
-            self.iface.mainWindow() if self.iface else None,
-            f"{tool} installed",
-            f"{tool} was installed successfully.\n\n"
-            "Apps that require this tool are now available.",
-        )
+    def _resume_pending_app_open(self, tool: str) -> None:
+        """Continue opening the app that requested a newly available backend."""
+        if self.registry is None or self._pending_app_open_id is None:
+            return
+        entry = self.registry.entries.get(self._pending_app_open_id)
+        if entry is None:
+            self._pending_app_open_id = None
+            return
+        required_tool = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+        if required_tool != tool:
+            return
+        self._prepare_app_environment_async(entry)
 
     def _update_status_bar(self) -> None:
         """Sync the dock's status bar with current bridge availability."""

@@ -229,6 +229,44 @@ self.add_input("output_format", "Output Format", InputType.CHOICE,
 | `linked_layer_key` | str | `linked_layer_key="input_layer"` | For FIELD: which layer to get fields from |
 | `file_filter` | str | `file_filter="*.tif"` | For FILE_PATH: file extension filter |
 | `group` | str | `group="Input"` | Inputs in same group appear in a box |
+| `optional_for_user` | bool | `optional_for_user=True` | Allow an empty value in the interactive host UI while leaving automated execution semantics on `required` |
+| `vector_layer_geometry` | str/list | `vector_layer_geometry="polygon"` | Restrict VECTOR_LAYER inputs to `point`, `line`, `polygon`, or a sequence of them |
+
+#### Shared Contract for QGarage and ArcGarage
+
+Use the same declarative contract in both hosts so one app definition can serve QGIS and ArcGIS Pro without divergence.
+
+- `required=False` means optional everywhere. This is the existing compatibility anchor and must keep its current meaning.
+- `optional_for_user=True` means the interactive user may leave the input blank. It does not make the parameter optional for automated or batch execution unless `required=False` is also set.
+- `vector_layer_geometry` applies only to `InputType.VECTOR_LAYER` and should accept `"point"`, `"line"`, `"polygon"`, or a sequence of those values.
+- Geometry aliases should normalize consistently across hosts, so values like `points`, `linestring`, and `multipolygon` collapse to the same three geometry families.
+
+Recommended implementation methodology for ArcGarage:
+
+1. Mirror the kwargs in ArcGarage's equivalent base app/input spec types without changing app author syntax.
+2. Apply host-level UI filtering where ArcGIS Pro widgets support geometry-restricted layer selection.
+3. Keep a shared pre-execution validation fallback so geometry and requiredness are enforced even when UI widgets cannot express the full contract.
+4. Run framework contract validation before app-specific `validate_inputs()` so apps do not need to duplicate generic checks.
+5. Leave existing apps untouched unless they need one of the new behaviors.
+
+Example:
+
+```python
+self.add_input(
+    "source_points",
+    "Source Points",
+    InputType.VECTOR_LAYER,
+    vector_layer_geometry="point",
+)
+self.add_input(
+    "clip_layer",
+    "Optional Clip Polygon",
+    InputType.VECTOR_LAYER,
+    required=True,
+    optional_for_user=True,
+    vector_layer_geometry="polygon",
+)
+```
 
 ### `execute_logic(self, inputs) -> dict` (Required for declarative mode)
 

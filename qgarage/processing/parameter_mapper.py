@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """Maps QGarage InputType to QgsProcessingParameter types."""
 from qgis.core import (
+    QgsProcessing,
     QgsProcessingParameterBoolean,
     QgsProcessingParameterCrs,
     QgsProcessingParameterEnum,
@@ -13,7 +14,33 @@ from qgis.core import (
     QgsProcessingParameterVectorLayer,
 )
 
-from ..core.base_app import InputSpec, InputType
+from ..core.base_app import BaseApp, InputSpec, InputType
+
+
+def _vector_processing_types(spec: InputSpec):
+    accepted = spec.vector_layer_geometry
+    if accepted is None:
+        return None
+
+    accepted_types = []
+    geometry_names = BaseApp._normalize_vector_geometry_contract(accepted)
+    if not geometry_names:
+        return None
+
+    source_type = getattr(QgsProcessing, "SourceType", None)
+    if source_type is None:
+        return None
+
+    mapping = {
+        "point": getattr(source_type, "TypeVectorPoint", None),
+        "line": getattr(source_type, "TypeVectorLine", None),
+        "polygon": getattr(source_type, "TypeVectorPolygon", None),
+    }
+    for name in sorted(geometry_names):
+        value = mapping.get(name)
+        if value is not None:
+            accepted_types.append(value)
+    return accepted_types or None
 
 
 def create_processing_parameter(spec: InputSpec):
@@ -104,6 +131,7 @@ def create_processing_parameter(spec: InputSpec):
         return QgsProcessingParameterVectorLayer(
             name,
             description,
+            types=_vector_processing_types(spec),
             optional=optional,
         )
 

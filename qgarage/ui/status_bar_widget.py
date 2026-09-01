@@ -4,7 +4,7 @@ from __future__ import annotations
 
 Each indicator is a small clickable label: ⚡ tool-name.
   - Blue  → tool found and verified.
-  - Grey  → tool not found; click to install via the system's preferred method.
+    - Grey  → tool has not been checked; click to verify and install if needed.
 """
 import logging
 
@@ -83,8 +83,8 @@ class _ToolIndicator(QWidget):
             cursor = Qt.CursorShape.ArrowCursor
         else:
             tip = (
-                f"{self._tool_name} not found — click to install using the "
-                "system's preferred method"
+                f"{self._tool_name} has not been checked — click to verify and "
+                "install using the system's preferred method if needed"
             )
             cursor = Qt.CursorShape.PointingHandCursor
 

@@ -25,7 +25,7 @@ from qgarage.core.pixi_bridge import (
 class TestResolvePixiExecutable:
     def test_returns_requested_when_which_finds_it(self):
         with patch("shutil.which", return_value="/usr/bin/pixi"):
-            assert _resolve_pixi_executable("pixi") == "pixi"
+            assert _resolve_pixi_executable("pixi") == "/usr/bin/pixi"
 
     def test_falls_back_to_augmented_path(self, tmp_path):
         """When default PATH fails but augmented PATH succeeds."""
@@ -79,10 +79,10 @@ class TestPixiBridgeInit:
             mock_run.return_value = MagicMock(stdout="pixi 0.40.0")
             with patch("shutil.which", return_value="/usr/bin/pixi"):
                 bridge = PixiBridge("pixi")
-                assert bridge.pixi_exe == "pixi"
+                assert bridge.pixi_exe == "/usr/bin/pixi"
                 mock_run.assert_called_once()
                 cmd = mock_run.call_args[0][0]
-                assert cmd == ["pixi", "--version"]
+                assert cmd == ["/usr/bin/pixi", "--version"]
 
     def test_raises_when_pixi_not_found(self):
         with patch("subprocess.run", side_effect=FileNotFoundError):
@@ -181,7 +181,7 @@ class TestEnsureEnv:
             pixi_bridge.ensure_env(tmp_path)
             mock_run.assert_called_once()
             cmd = mock_run.call_args[0][0]
-            assert cmd[0] == "pixi"
+            assert cmd[0] == pixi_bridge.pixi_exe
             assert "install" in cmd
             assert "--manifest-path" in cmd
             assert str(manifest) in cmd
@@ -285,7 +285,7 @@ class TestLaunchAppIsolated:
             cmd = call_args[0][0]
 
             # Verify command structure: pixi run --manifest-path <path> python <runner> <config>
-            assert cmd[0] == "pixi"
+            assert cmd[0] == pixi_bridge.pixi_exe
             assert cmd[1] == "run"
             assert "--manifest-path" in cmd
             manifest_idx = cmd.index("--manifest-path")
