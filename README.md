@@ -374,6 +374,58 @@ The declarative system supports these input types:
 | `CRS`          | `QgsProjectionSelectionWidget` | Shim        | `self.add_input("crs", "Coordinate System", InputType.CRS)` |
 | `TEXT_AREA`    | `QTextEdit`                    | `str`       | `self.add_input("notes", "Notes", InputType.TEXT_AREA)` |
 
+### Input Contract Extensions
+
+`add_input()` now supports two backward-compatible contract fields for declarative apps:
+
+- `optional_for_user=True`: lets the dashboard user leave an input blank even when the same parameter should remain required in Processing or other automated contexts.
+- `vector_layer_geometry="point" | "line" | "polygon" | [..]`: restricts `InputType.VECTOR_LAYER` inputs to the declared geometry family. This is applied in the dashboard when QGIS exposes geometry-specific filters, and in Processing via geometry-restricted vector parameters.
+
+Recommended methodology for apps shared across QGarage and ArcGarage:
+
+1. Keep using `required=False` when a parameter is genuinely optional everywhere.
+2. Use `optional_for_user=True` only when interactive users may skip the parameter, but automated workflows should still treat it as required or resolve it later.
+3. Add `vector_layer_geometry` to every vector input whose logic assumes a specific geometry family instead of re-validating ad hoc inside `execute_logic()`.
+4. Leave existing apps unchanged if they do not need either feature; all current `add_input()` calls remain valid.
+
+Example:
+
+```python
+self.add_input(
+    "source_points",
+    "Source Points",
+    InputType.VECTOR_LAYER,
+    vector_layer_geometry="point",
+)
+self.add_input(
+    "clip_layer",
+    "Optional Clip Polygon",
+    InputType.VECTOR_LAYER,
+    required=True,
+    optional_for_user=True,
+    vector_layer_geometry="polygon",
+)
+```
+
+Contract notes:
+
+- `required` remains the compatibility anchor. Existing apps keep the same Processing optionality and validation semantics.
+- `optional_for_user` only relaxes the dashboard UI requirement check; it never makes a previously optional parameter required.
+- `vector_layer_geometry` is ignored for non-vector inputs.
+- If QGIS cannot enforce the geometry filter at widget level, QGarage still validates the selected layer before execution.
+
+### ArcGarage Implementation Guide
+
+To implement the same contract in ArcGarage, keep the app authoring surface identical and adapt only the host-side enforcement. The goal is that a shared app can declare inputs once and run unchanged in QGarage and ArcGarage.
+
+Mirror the declarative input kwargs exactly in ArcGarage's base app layer: `required`, `optional_for_user`, and `vector_layer_geometry`. Preserve the same meaning. `required=False` means the parameter is optional everywhere. `optional_for_user=True` means the interactive ArcGIS Pro UI may leave it blank, but any automated execution surface should still rely on `required`. `vector_layer_geometry` should accept `"point"`, `"line"`, `"polygon"`, or a sequence of those values, with the same alias normalization used in QGarage.
+
+Apply the contract in three places. First, at widget creation time, allow empty values only when `required=False` or `optional_for_user=True`. Second, if ArcGIS Pro exposes geometry-specific layer pickers or filters, apply them directly for vector inputs. Third, always keep a pre-execution validation fallback that checks the resolved layer geometry family before running business logic. That fallback is what guarantees behavior stays consistent even if a particular ArcGIS Pro picker cannot express the exact restriction.
+
+The validation order should stay the same across both products. Run framework-level contract validation first, then app-specific `validate_inputs()`, then execute the app logic. That keeps generic guarantees in one place and avoids every app having to repeat geometry and optionality checks. It also preserves backward compatibility because older apps that only use `required` continue to behave exactly as they do today.
+
+Recommended migration approach for ArcGarage is incremental. Leave existing apps unchanged unless they need one of the two new behaviors. Add `vector_layer_geometry` only where tool logic already assumes a point, line, or polygon layer. Add `optional_for_user=True` only where an interactive user may defer a value that a batch or automated workflow should still treat as required. That keeps the shared app contract stable and minimizes risk while aligning QGarage and ArcGarage on the same declarative API.
+
 **Layer and CRS shims** in the subprocess have:
 - `.name()` — layer/CRS name
 - `.source()` — file path (for vectors: temporary GeoJSON export)

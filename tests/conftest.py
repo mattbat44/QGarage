@@ -210,6 +210,9 @@ def _install_qgis_mock():
     core_mock.Qgis.MessageLevel.Warning = 1
     core_mock.Qgis.MessageLevel.Critical = 2
     core_mock.QgsProcessingAlgorithm = _DummyProcessingAlgorithm
+    core_mock.QgsProcessing.SourceType.TypeVectorPoint = 0
+    core_mock.QgsProcessing.SourceType.TypeVectorLine = 1
+    core_mock.QgsProcessing.SourceType.TypeVectorPolygon = 2
     core_mock.QgsProcessingProvider = _DummyProcessingProvider
     core_mock.QgsProcessingException = type("QgsProcessingException", (Exception,), {})
     core_mock.QgsProcessingParameterString = _DummyProcessingParameter
@@ -237,6 +240,9 @@ def _install_qgis_mock():
     # QgsMapLayerProxyModel needs a Filter attribute
     core_mock.QgsMapLayerProxyModel.Filter.VectorLayer = 1
     core_mock.QgsMapLayerProxyModel.Filter.RasterLayer = 2
+    core_mock.QgsMapLayerProxyModel.Filter.PointLayer = 4
+    core_mock.QgsMapLayerProxyModel.Filter.LineLayer = 8
+    core_mock.QgsMapLayerProxyModel.Filter.PolygonLayer = 16
 
     # QgsFileWidget needs StorageMode
     gui_mock = sys.modules["qgis.gui"]

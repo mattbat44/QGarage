@@ -7,7 +7,23 @@ SUPPORTED_PACKAGE_MANAGERS = ("pixi", "uv")
 
 _WINDOWS_INSTALL_SNIPPETS = {
     "uv": "& { $ProgressPreference='SilentlyContinue'; Invoke-RestMethod https://astral.sh/uv/install.ps1 | Invoke-Expression }",
-    "pixi": "& { $ProgressPreference='SilentlyContinue'; (Invoke-WebRequest -UseBasicParsing https://pixi.sh/install.ps1).Content | Invoke-Expression }",
+    "pixi": (
+        "& { "
+        "$ErrorActionPreference='Stop'; "
+        "$ProgressPreference='SilentlyContinue'; "
+        "[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; "
+        "try { "
+        "$installer=Invoke-RestMethod -Uri 'https://pixi.sh/install.ps1' -ErrorAction Stop; "
+        "if ([string]::IsNullOrWhiteSpace($installer)) { throw 'Pixi installer download was empty.' }; "
+        "& ([ScriptBlock]::Create($installer)); "
+        "if ($LASTEXITCODE -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE } "
+        "} catch { "
+        "Write-Error ('Pixi installation failed: ' + $_.Exception.Message); "
+        "Write-Error $_.ScriptStackTrace; "
+        "exit 1 "
+        "} "
+        "}"
+    ),
 }
 
 _UNIX_INSTALL_SNIPPETS = {

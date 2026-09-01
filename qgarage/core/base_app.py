@@ -102,6 +102,8 @@ class InputSpec:
     linked_layer_key: str = ""
     file_filter: str = "All Files (*.*)"
     group: str = ""
+    optional_for_user: bool = False
+    vector_layer_geometry: str | list[str] | tuple[str, ...] | None = None
 
 
 @dataclass
@@ -192,7 +194,16 @@ class BaseApp(ABC):
         input_type: InputType,
         **kwargs,
     ) -> None:
-        """Register a declarative input. Call this in __init__."""
+        """Register a declarative input. Call this in __init__.
+
+        Supported optional kwargs include:
+            required: When False, the input is optional in both dashboard and Processing.
+            optional_for_user: When True, the dashboard UI allows the user to leave the
+                input empty even if Processing should still treat it as required.
+            vector_layer_geometry: For VECTOR_LAYER inputs only, restrict accepted
+                geometry to "point", "line", or "polygon". A sequence can be used to
+                allow multiple geometry families.
+        """
         spec = InputSpec(key=key, label=label, input_type=input_type, **kwargs)
         self._input_specs.append(spec)
 
@@ -423,6 +434,8 @@ class BaseApp(ABC):
 
         if spec.input_type == InputType.CHOICE:
             w = QComboBox()
+            if self._is_user_optional(spec) and spec.default is None:
+                w.addItem("")
             w.addItems(spec.choices)
             if spec.default and spec.default in spec.choices:
                 w.setCurrentText(spec.default)
@@ -441,20 +454,25 @@ class BaseApp(ABC):
 
         if spec.input_type == InputType.VECTOR_LAYER:
             w = QgsMapLayerComboBox()
-            w.setFilters(QgsMapLayerProxyModel.Filter.VectorLayer)
+            w.setFilters(self._vector_layer_filter_for_spec(spec))
+            self._configure_layer_widget_optionality(w, spec)
             return w
 
         if spec.input_type == InputType.RASTER_LAYER:
             w = QgsMapLayerComboBox()
             w.setFilters(QgsMapLayerProxyModel.Filter.RasterLayer)
+            self._configure_layer_widget_optionality(w, spec)
             return w
 
         if spec.input_type == InputType.ANY_LAYER:
             w = QgsMapLayerComboBox()
+            self._configure_layer_widget_optionality(w, spec)
             return w
 
         if spec.input_type == InputType.FIELD:
             w = QgsFieldComboBox()
+            if self._is_user_optional(spec) and hasattr(w, "setAllowEmptyFieldName"):
+                w.setAllowEmptyFieldName(True)
             if spec.linked_layer_key and spec.linked_layer_key in self._input_widgets:
                 layer_combo = self._input_widgets[spec.linked_layer_key]
                 if isinstance(layer_combo, QgsMapLayerComboBox):
@@ -507,6 +525,151 @@ class BaseApp(ABC):
                 values[spec.key] = w.toPlainText()
 
         return values
+
+    def _is_user_optional(self, spec: InputSpec) -> bool:
+        """Return True when the dashboard should allow an empty user selection."""
+        return spec.optional_for_user or not spec.required
+
+    @staticmethod
+    def _configure_layer_widget_optionality(
+        widget: QgsMapLayerComboBox, spec: InputSpec
+    ) -> None:
+        """Allow blank layer selection for optional dashboard inputs when supported."""
+        if not (spec.optional_for_user or not spec.required):
+            return
+        if hasattr(widget, "setAllowEmptyLayer"):
+            widget.setAllowEmptyLayer(True)
+        if spec.default is None and hasattr(widget, "setLayer"):
+            widget.setLayer(None)
+
+    @staticmethod
+    def _normalize_vector_geometry_contract(
+        value: str | list[str] | tuple[str, ...] | None,
+    ) -> set[str]:
+        """Normalise accepted vector geometry labels to point/line/polygon."""
+        if value is None:
+            return set()
+        if isinstance(value, str):
+            candidates = [value]
+        else:
+            candidates = list(value)
+
+        aliases = {
+            "point": "point",
+            "points": "point",
+            "multipoint": "point",
+            "line": "line",
+            "lines": "line",
+            "linestring": "line",
+            "multiline": "line",
+            "multilinestring": "line",
+            "polygon": "polygon",
+            "polygons": "polygon",
+            "multipolygon": "polygon",
+            "any": "",
+            "vector": "",
+            "all": "",
+            "": "",
+        }
+
+        normalized = set()
+        for candidate in candidates:
+            key = str(candidate).strip().lower().replace(" ", "")
+            mapped = aliases.get(key)
+            if mapped is None:
+                continue
+            if not mapped:
+                return set()
+            normalized.add(mapped)
+        return normalized
+
+    @classmethod
+    def _vector_layer_filter_for_spec(cls, spec: InputSpec):
+        """Return the best available layer filter for a vector input contract."""
+        filters = getattr(QgsMapLayerProxyModel, "Filter", None)
+        if filters is None:
+            return QgsMapLayerProxyModel.Filter.VectorLayer
+
+        accepted = cls._normalize_vector_geometry_contract(spec.vector_layer_geometry)
+        if not accepted:
+            return filters.VectorLayer
+
+        filter_map = {
+            "point": getattr(filters, "PointLayer", None),
+            "line": getattr(filters, "LineLayer", None),
+            "polygon": getattr(filters, "PolygonLayer", None),
+        }
+        selected = [filter_map[name] for name in sorted(accepted) if filter_map[name] is not None]
+        if not selected:
+            return filters.VectorLayer
+
+        combined = selected[0]
+        for flag in selected[1:]:
+            combined |= flag
+        return combined
+
+    @classmethod
+    def _detect_vector_layer_geometry(cls, layer: Any) -> str | None:
+        """Best-effort geometry family detection for live QGIS or shim layers."""
+        if layer is None:
+            return None
+
+        if hasattr(layer, "geometryType"):
+            raw = layer.geometryType()
+            if isinstance(raw, str):
+                detected = cls._normalize_vector_geometry_contract(raw)
+                if detected:
+                    return next(iter(detected))
+            mapping = {0: "point", 1: "line", 2: "polygon"}
+            if raw in mapping:
+                return mapping[raw]
+
+        if hasattr(layer, "geometryTypeName"):
+            detected = cls._normalize_vector_geometry_contract(layer.geometryTypeName())
+            if detected:
+                return next(iter(detected))
+
+        if hasattr(layer, "wkbType"):
+            detected = cls._normalize_vector_geometry_contract(layer.wkbType())
+            if detected:
+                return next(iter(detected))
+
+        return None
+
+    def _validate_declared_inputs(
+        self, inputs: dict[str, Any], *, for_user: bool
+    ) -> Optional[str]:
+        """Validate framework-level input contract before app-specific validation."""
+        for spec in self._input_specs:
+            if spec.key not in inputs:
+                continue
+
+            value = inputs[spec.key]
+            is_required = spec.required
+            if for_user and spec.optional_for_user:
+                is_required = False
+
+            if is_required and (value is None or value == ""):
+                return f"Required input missing: {spec.label}"
+
+            if spec.input_type != InputType.VECTOR_LAYER or value is None:
+                continue
+
+            accepted = self._normalize_vector_geometry_contract(spec.vector_layer_geometry)
+            if not accepted:
+                continue
+
+            actual = self._detect_vector_layer_geometry(value)
+            if actual is None or actual in accepted:
+                continue
+
+            accepted_text = ", ".join(sorted(accepted))
+            return (
+                f"Invalid vector layer for {spec.label}: expected {accepted_text}, "
+                f"got {actual}"
+            )
+
+        return None
 
     # --- Parameter caching helpers ---
 
@@ -666,12 +829,10 @@ class BaseApp(ABC):
         """Collect inputs, validate, then dispatch execute_logic via persistent venv subprocess."""
         inputs = self._collect_inputs()
 
-        for spec in self._input_specs:
-            if spec.required and spec.key in inputs:
-                val = inputs[spec.key]
-                if val is None or val == "":
-                    self._output_area.setText(f"Required input missing: {spec.label}")
-                    return
+        error = self._validate_declared_inputs(inputs, for_user=True)
+        if error:
+            self._output_area.setText(error)
+            return
 
         error = self.validate_inputs(inputs)
         if error:

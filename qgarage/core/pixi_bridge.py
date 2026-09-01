@@ -156,8 +156,9 @@ def _resolve_pixi_executable(requested: str) -> str:
     QGIS launches subprocesses with a stripped PATH, so ``pixi`` may not
     resolve even when it is installed.
     """
-    if shutil.which(requested):
-        return requested
+    resolved_on_path = shutil.which(requested)
+    if resolved_on_path:
+        return resolved_on_path
 
     is_windows = platform.system() == "Windows"
     candidate_dirs = (
@@ -196,14 +197,27 @@ class PixiBridge:
                 text=True,
                 timeout=10,
                 check=True,
+                env=_build_pixi_env(),
                 creationflags=_CREATE_NO_WINDOW,
             )
             log_info(f"pixi version: {result.stdout.strip()}", "pixi_bridge")
-        except FileNotFoundError:
+        except FileNotFoundError as exc:
             raise RuntimeError(
                 f"pixi executable not found (tried: {self.pixi_exe}). "
                 "Install from https://pixi.sh"
+            ) from exc
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"pixi verification timed out after {exc.timeout} seconds: {self.pixi_exe}"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            output = "\n".join(
+                part.strip() for part in (exc.stdout, exc.stderr) if part and part.strip()
             )
+            raise RuntimeError(
+                f"pixi verification failed for {self.pixi_exe}.\n"
+                f"Output:\n{output or '<no output>'}"
+            ) from exc
 
     def ensure_env(self, app_dir: Path) -> None:
         """Create or update the pixi environment for an app.

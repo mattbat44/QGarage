@@ -7,6 +7,7 @@ from qgis.gui import QgisInterface, QgsDockWidget
 from qgis.PyQt.QtCore import Qt, pyqtSignal
 from qgis.PyQt.QtWidgets import (
     QHBoxLayout,
+    QFrame,
     QLabel,
     QPushButton,
     QScrollArea,
@@ -42,6 +43,9 @@ class DashboardDock(QgsDockWidget):
     update_app_requested = pyqtSignal(str)
     #: Emitted when the user clicks the global ↺ reload button.
     global_refresh_requested = pyqtSignal()
+    #: Emitted when an unloaded app is opened and needs its environment prepared.
+    app_prepare_requested = pyqtSignal(str)
+    tool_install_confirmed = pyqtSignal(str)
 
     def __init__(self, iface: QgisInterface, parent=None):
         super().__init__("QGarage", parent or iface.mainWindow())
@@ -136,6 +140,32 @@ class DashboardDock(QgsDockWidget):
         self.card_layout = QVBoxLayout(self.card_container)
         self.card_layout.setContentsMargins(8, 8, 8, 8)
         self.card_layout.setSpacing(8)
+
+        self._tool_install_prompt = QFrame()
+        self._tool_install_prompt.setObjectName("qgarageToolInstallPrompt")
+        prompt_layout = QVBoxLayout(self._tool_install_prompt)
+        prompt_layout.setContentsMargins(10, 10, 10, 10)
+        prompt_layout.setSpacing(6)
+        self._tool_install_title = QLabel()
+        self._tool_install_title.setObjectName("qgarageToolInstallTitle")
+        prompt_layout.addWidget(self._tool_install_title)
+        self._tool_install_detail = QLabel()
+        self._tool_install_detail.setWordWrap(True)
+        self._tool_install_detail.setTextInteractionFlags(
+            Qt.TextInteractionFlag.TextSelectableByMouse
+        )
+        prompt_layout.addWidget(self._tool_install_detail)
+        prompt_buttons = QHBoxLayout()
+        self._tool_install_button = QPushButton("Install")
+        self._tool_install_button.clicked.connect(self._confirm_tool_install)
+        prompt_buttons.addWidget(self._tool_install_button)
+        self._tool_install_cancel_button = QPushButton("Cancel")
+        self._tool_install_cancel_button.clicked.connect(self._tool_install_prompt.hide)
+        prompt_buttons.addWidget(self._tool_install_cancel_button)
+        prompt_buttons.addStretch()
+        prompt_layout.addLayout(prompt_buttons)
+        self._tool_install_prompt.setVisible(False)
+        self.card_layout.addWidget(self._tool_install_prompt)
 
         self._empty_label = QLabel(
             "No apps installed.\nClick '+  Install' to get started."
@@ -334,9 +364,49 @@ class DashboardDock(QgsDockWidget):
 
         self._stack.setCurrentIndex(1)
 
+    def open_app(self, app_id: str) -> None:
+        """Open an app whose environment and instance are ready."""
+        self._show_app(app_id)
+
+    def prompt_tool_install(self, tool: str, command: str) -> None:
+        """Show a visible, dashboard-owned consent prompt for a backend."""
+        self._pending_tool_install = tool
+        self._tool_install_messages = []
+        self._tool_install_title.setText(f"{tool} is required to open this app")
+        self._tool_install_detail.setText(
+            "QGarage will run this official installer command:\n\n" + command
+        )
+        self._tool_install_button.setText(f"Install {tool}")
+        self._tool_install_button.setEnabled(True)
+        self._tool_install_cancel_button.setEnabled(True)
+        self._tool_install_prompt.setVisible(True)
+
+    def set_tool_install_status(self, message: str, *, running: bool = False) -> None:
+        """Display installer progress in the dashboard prompt."""
+        if running:
+            messages = getattr(self, "_tool_install_messages", [])
+            messages.append(message)
+            self._tool_install_messages = messages[-100:]
+            message = "\n".join(self._tool_install_messages)
+        self._tool_install_detail.setText(message)
+        self._tool_install_button.setEnabled(not running)
+        self._tool_install_cancel_button.setEnabled(not running)
+        self._tool_install_prompt.setVisible(True)
+
+    def _confirm_tool_install(self) -> None:
+        tool = getattr(self, "_pending_tool_install", None)
+        if tool:
+            self.tool_install_confirmed.emit(tool)
+
     # --- Slots ---
 
     def _on_app_run(self, app_id: str):
+        if self._registry is None:
+            return
+        entry = self._registry.entries.get(app_id)
+        if entry is not None and entry.instance is None:
+            self.app_prepare_requested.emit(app_id)
+            return
         self._show_app(app_id)
 
     def _on_app_reset(self, app_id: str):

@@ -15,12 +15,37 @@ Install commands used:
 
 
 import logging
+import os
 import platform
+import shutil
 import subprocess
+from pathlib import Path
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
+from ..core.package_manager_install import build_install_command
+
 logger = logging.getLogger("qgarage.install_tool_worker")
+
+
+def _resolve_windows_powershell() -> tuple[str, list[str]]:
+    """Find PowerShell even when QGIS has launched with a reduced PATH."""
+    candidates = []
+    for root in (os.environ.get("SystemRoot"), os.environ.get("WINDIR"), r"C:\Windows"):
+        if root:
+            candidate = Path(root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            candidate_text = str(candidate)
+            if candidate_text not in candidates:
+                candidates.append(candidate_text)
+
+    for candidate in candidates:
+        if Path(candidate).is_file():
+            return candidate, candidates
+
+    path_executable = shutil.which("powershell.exe") or shutil.which("powershell")
+    if path_executable:
+        return path_executable, candidates
+    return "powershell.exe", candidates
 
 
 class InstallToolWorker(QThread):
@@ -37,46 +62,6 @@ class InstallToolWorker(QThread):
     log_message: pyqtSignal = pyqtSignal(str)
     install_finished: pyqtSignal = pyqtSignal(str, bool, str)
 
-    # ------------------------------------------------------------------
-    # Install command table: (tool, system) -> argv list
-    # ``shell=True`` is NOT used; each entry is a real argv list so we
-    # can capture stdout/stderr cleanly.
-    # ------------------------------------------------------------------
-    _COMMANDS: dict[tuple[str, str], list[str]] = {
-        ("uv", "Linux"): [
-            "sh",
-            "-c",
-            "curl -LsSf https://astral.sh/uv/install.sh | sh",
-        ],
-        ("uv", "Darwin"): [
-            "sh",
-            "-c",
-            "curl -LsSf https://astral.sh/uv/install.sh | sh",
-        ],
-        ("uv", "Windows"): [
-            "powershell",
-            "-ExecutionPolicy Bypass",
-            "-Command",
-            "irm https://astral.sh/uv/install.ps1 | iex",
-        ],
-        ("pixi", "Linux"): [
-            "sh",
-            "-c",
-            "curl -fsSL https://pixi.sh/install.sh | bash",
-        ],
-        ("pixi", "Darwin"): [
-            "sh",
-            "-c",
-            "curl -fsSL https://pixi.sh/install.sh | bash",
-        ],
-        ("pixi", "Windows"): [
-            "powershell",
-            "-ExecutionPolicy ByPass",
-            "-Command",
-            "irm -useb https://pixi.sh/install.ps1 | iex",
-        ],
-    }
-
     def __init__(self, tool: str, parent=None) -> None:
         super().__init__(parent)
         if tool not in ("uv", "pixi"):
@@ -91,15 +76,24 @@ class InstallToolWorker(QThread):
         tool = self._tool
         system = platform.system()
 
-        cmd = self._COMMANDS.get((tool, system))
-        if cmd is None:
-            msg = f"No installer available for {tool!r} on {system!r}."
+        try:
+            cmd = build_install_command([tool], system_name=system)
+        except ValueError as exc:
+            msg = str(exc)
             logger.error(msg)
             self.install_finished.emit(tool, False, msg)
             return
 
+        attempted_powershell_paths = []
+        if system == "Windows":
+            powershell_exe, attempted_powershell_paths = _resolve_windows_powershell()
+            cmd[0] = powershell_exe
+            self.log_message.emit(f"Using PowerShell: {powershell_exe}")
+
         self.log_message.emit(f"Installing {tool} for {system}…")
-        logger.info("Running installer: %s", " ".join(cmd))
+        command_text = subprocess.list2cmdline(cmd)
+        self.log_message.emit(f"Running: {command_text}")
+        logger.info("Running installer: %s", command_text)
 
         try:
             result = subprocess.run(
@@ -109,9 +103,14 @@ class InstallToolWorker(QThread):
                 timeout=180,
             )
         except FileNotFoundError as exc:
+            attempted = "\n".join(attempted_powershell_paths) or "(none)"
             msg = (
-                f"Could not find installer program: {exc}. "
-                "Please install curl (Linux/macOS) or PowerShell (Windows)."
+                f"Could not launch installer executable '{cmd[0]}': {exc}\n"
+                f"Platform: {system}\n"
+                f"Command: {command_text}\n"
+                f"PowerShell paths checked:\n{attempted}\n"
+                "Ensure C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe exists "
+                "and that QGIS is not running under an application-control policy."
             )
             logger.error(msg)
             self.install_finished.emit(tool, False, msg)
@@ -130,9 +129,19 @@ class InstallToolWorker(QThread):
             for line in result.stdout.splitlines():
                 self.log_message.emit(line)
 
+        if result.stderr:
+            for line in result.stderr.splitlines():
+                self.log_message.emit(f"stderr: {line}")
+
         if result.returncode != 0:
+            stdout = result.stdout.strip() if result.stdout else "(no stdout)"
             stderr = result.stderr.strip() if result.stderr else "(no stderr)"
-            msg = f"{tool} installer exited with code {result.returncode}.\n{stderr}"
+            msg = (
+                f"{tool} installer exited with code {result.returncode}.\n"
+                f"Command: {command_text}\n"
+                f"Standard output:\n{stdout}\n"
+                f"Standard error:\n{stderr}"
+            )
             logger.error(msg)
             self.install_finished.emit(tool, False, msg)
             return

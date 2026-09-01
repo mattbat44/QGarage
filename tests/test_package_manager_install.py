@@ -32,6 +32,8 @@ def test_build_install_command_for_windows_multiple_managers():
     assert command[5] == "-Command"
     assert "https://astral.sh/uv/install.ps1" in command[6]
     assert "https://pixi.sh/install.ps1" in command[6]
+    assert "$ErrorActionPreference='Stop'" in command[6]
+    assert "Pixi installation failed:" in command[6]
 
 
 def test_build_install_command_for_unix_uses_shell_script():
@@ -50,3 +52,17 @@ def test_build_install_command_rejects_unknown_manager():
 def test_build_install_command_requires_at_least_one_manager():
     with pytest.raises(ValueError, match="At least one package manager"):
         build_install_command([], system_name="Linux")
+
+
+@pytest.mark.parametrize("tool", ["uv", "pixi"])
+def test_build_install_command_uses_valid_windows_powershell_arguments(tool):
+    command = build_install_command([tool], system_name="Windows")
+
+    assert command[:6] == [
+        "powershell.exe",
+        "-NoLogo",
+        "-NoProfile",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-Command",
+    ]
