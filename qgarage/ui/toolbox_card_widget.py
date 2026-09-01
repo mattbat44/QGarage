@@ -6,6 +6,7 @@ from qgis.PyQt.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QSizePolicy,
     QToolButton,
     QVBoxLayout,
@@ -29,14 +30,32 @@ class ToolboxCardWidget(QFrame):
     app_refresh_clicked = pyqtSignal(str)
     app_check_updates_clicked = pyqtSignal(str)
     app_update_clicked = pyqtSignal(str)
+    toolbox_primary_clicked = pyqtSignal(str)
 
     def __init__(
         self,
         toolbox_entry: ToolboxEntry,
+        *,
+        primary_action: str = "Open",
+        action_enabled: bool | None = None,
+        show_state_badge: bool = True,
+        open_on_card_click: bool = True,
+        show_context_menu: bool = True,
+        toolbox_primary_action: str | None = None,
+        toolbox_action_enabled: bool = True,
+        installed_app_ids: set[str] | None = None,
         parent=None,
     ):
         super().__init__(parent)
         self.toolbox_entry = toolbox_entry
+        self._primary_action = primary_action
+        self._action_enabled = action_enabled
+        self._show_state_badge = show_state_badge
+        self._open_on_card_click = open_on_card_click
+        self._show_context_menu = show_context_menu
+        self._toolbox_primary_action = toolbox_primary_action
+        self._toolbox_action_enabled = toolbox_action_enabled
+        self._installed_app_ids = installed_app_ids or set()
         self._app_cards: dict[str, AppCardWidget] = {}
 
         self.setProperty("class", "ToolboxCardWidget")
@@ -95,6 +114,15 @@ class ToolboxCardWidget(QFrame):
 
         header_layout.addLayout(text_layout, stretch=1)
 
+        self._toolbox_primary_button = None
+        if self._toolbox_primary_action is not None:
+            self._toolbox_primary_button = QPushButton(self._toolbox_primary_action)
+            self._toolbox_primary_button.setEnabled(self._toolbox_action_enabled)
+            self._toolbox_primary_button.clicked.connect(
+                lambda: self.toolbox_primary_clicked.emit(self.toolbox_entry.toolbox_id)
+            )
+            header_layout.addWidget(self._toolbox_primary_button)
+
         # Expand/collapse button
         self._expand_button = QToolButton()
         self._expand_button.setObjectName("toolboxExpandButton")
@@ -125,6 +153,7 @@ class ToolboxCardWidget(QFrame):
 
         # Add app cards
         for app_id, app_entry in self.toolbox_entry.app_entries.items():
+            is_installed = app_id in self._installed_app_ids
             card = AppCardWidget(
                 app_id,
                 app_entry.app_meta,
@@ -133,6 +162,11 @@ class ToolboxCardWidget(QFrame):
                 update_available=app_entry.update_available,
                 available_version=app_entry.available_version,
                 checking_updates=app_entry.checking_updates,
+                primary_action="Installed" if is_installed else self._primary_action,
+                action_enabled=False if is_installed else self._action_enabled,
+                show_state_badge=self._show_state_badge,
+                open_on_card_click=self._open_on_card_click,
+                show_context_menu=self._show_context_menu,
             )
             card.run_clicked.connect(self.app_run_clicked.emit)
             card.reset_clicked.connect(self.app_reset_clicked.emit)
@@ -237,6 +271,12 @@ class ToolboxCardWidget(QFrame):
                 event.pos() if hasattr(event, "pos") else event.position().toPoint()
             )
             if not self._expand_button.geometry().contains(click_pos):
+                if (
+                    self._toolbox_primary_button is not None
+                    and self._toolbox_primary_button.geometry().contains(click_pos)
+                ):
+                    event.ignore()
+                    return
                 self._toggle_expanded()
                 event.accept()
                 return
@@ -254,3 +294,9 @@ class ToolboxCardWidget(QFrame):
                     checking_updates=app_entry.checking_updates,
                 )
             card.update_state()
+
+    def set_app_backend_checked(self, app_id: str, checked: bool = True) -> None:
+        """Update the neutral backend-check badge on one contained app."""
+        card = self._app_cards.get(app_id)
+        if card is not None:
+            card.set_backend_checked(checked)

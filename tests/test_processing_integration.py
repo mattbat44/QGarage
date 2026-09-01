@@ -127,6 +127,18 @@ def test_parameter_mapper_vector_layer_geometry_restriction():
     assert param.kwargs["types"] == [0]
 
 
+def test_parameter_mapper_point_uses_point_vector_layer():
+    spec = InputSpec(
+        key="location",
+        label="Location",
+        input_type=InputType.POINT,
+    )
+
+    param = create_processing_parameter(spec)
+
+    assert param.kwargs["types"] == [0]
+
+
 def test_declared_input_validation_respects_optional_for_user():
     class OptionalUserApp(BaseApp):
         def __init__(self, **kwargs):
@@ -180,6 +192,25 @@ def test_declared_input_validation_enforces_vector_geometry_contract():
     )
     assert error is not None
     assert "expected polygon" in error
+
+
+def test_declared_input_validation_requires_captured_point():
+    class PointApp(BaseApp):
+        def __init__(self, **kwargs):
+            super().__init__(**kwargs)
+            self.add_input("location", "Location", InputType.POINT)
+
+        def execute_logic(self, inputs):
+            return {"status": "success", "message": "ok"}
+
+    app = PointApp(
+        app_meta={"id": "point_app", "name": "Point App"},
+        app_dir=Path("/tmp/point_app"),
+    )
+
+    assert app._validate_declared_inputs({"location": None}, for_user=True) == (
+        "Required input missing: Location"
+    )
 
 
 def test_algorithm_wrapper_creation():
@@ -285,6 +316,7 @@ def test_processing_provider_filters_dynamic_apps():
     algorithms = provider.algorithms()
     assert len(algorithms) == 1
     assert algorithms[0].name() == "declarative_app"
+    registry.load_all.assert_not_called()
 
 
 def test_algorithm_process_execution():

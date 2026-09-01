@@ -18,6 +18,9 @@ Check out ([ArcGarage](https://github.com/mattbat44/ArcGarage)) to connect the e
 - **🔌 Easy Installation** — Install apps from ZIP files or local folders without manual setup
 - **🏠 Persistent App Storage** — Installed apps and environments are stored in `~/.garage` so they survive plugin/QGIS reinstalls
 - **⚙️ Processing Framework Integration** — Declarative apps automatically appear in the QGIS Processing Toolbox alongside the dashboard UI
+- **📍 Map Point Input** — Let users select a coordinate directly from the QGIS map canvas while retaining a standard vector-layer contract for app logic
+- **🧰 Local Marketplace and Toolboxes** — Browse installable apps and grouped toolboxes from configured local directories
+- **🔎 Dashboard Search** — Find installed apps and toolboxes by name, description, ID, or tags with fuzzy matching
 
 ## 📋 Requirements
 
@@ -62,6 +65,10 @@ Click an app card to view its UI. Fill in the inputs and click **Run**. The app:
 ### 4. Create Your Own App
 
 See [Creating Your First App](#creating-your-first-app) below.
+
+### 5. Browse the Local Marketplace
+
+Click **Marketplace** to scan the configured local source directories for individual apps and toolboxes. Install an item from its card; installed items remain visible but are marked as installed. Use the dashboard search field to filter installed apps and toolboxes by ID, name, description, or tags.
 
 ## 🏗️ Architecture Overview
 
@@ -373,6 +380,7 @@ The declarative system supports these input types:
 | `FIELD`        | `QgsFieldComboBox`             | `str`       | `self.add_input("field", "Attribute Field", InputType.FIELD, linked_layer_key="layer")` |
 | `CRS`          | `QgsProjectionSelectionWidget` | Shim        | `self.add_input("crs", "Coordinate System", InputType.CRS)` |
 | `TEXT_AREA`    | `QTextEdit`                    | `str`       | `self.add_input("notes", "Notes", InputType.TEXT_AREA)` |
+| `POINT`        | Map-canvas point picker         | Point-layer shim | `self.add_input("location", "Location", InputType.POINT)` |
 
 ### Input Contract Extensions
 
@@ -380,6 +388,7 @@ The declarative system supports these input types:
 
 - `optional_for_user=True`: lets the dashboard user leave an input blank even when the same parameter should remain required in Processing or other automated contexts.
 - `vector_layer_geometry="point" | "line" | "polygon" | [..]`: restricts `InputType.VECTOR_LAYER` inputs to the declared geometry family. This is applied in the dashboard when QGIS exposes geometry-specific filters, and in Processing via geometry-restricted vector parameters.
+- `InputType.POINT`: lets a dashboard user activate the picker and click one coordinate on the QGIS canvas. QGarage creates a temporary, one-feature point vector layer in the canvas CRS and serializes it to GeoJSON exactly like `VECTOR_LAYER`, so apps read it with the same layer-shim API. In Processing, it accepts only a point vector layer because a canvas picker is unavailable.
 
 Recommended methodology for apps shared across QGarage and ArcGarage:
 
@@ -416,15 +425,13 @@ Contract notes:
 
 ### ArcGarage Implementation Guide
 
-To implement the same contract in ArcGarage, keep the app authoring surface identical and adapt only the host-side enforcement. The goal is that a shared app can declare inputs once and run unchanged in QGarage and ArcGarage.
+ArcGarage must expose the same app authoring surface so a shared app declares an input once and runs unchanged in both hosts. Mirror `InputType.POINT` and the `required`, `optional_for_user`, and `vector_layer_geometry` kwargs in ArcGarage's base-app input specification without changing their names or meaning. `required=False` means optional everywhere; `optional_for_user=True` only permits an empty interactive selection; `vector_layer_geometry` accepts `"point"`, `"line"`, `"polygon"`, or a sequence, using the same aliases (`points`, `linestring`, `multipolygon`, and so on).
 
-Mirror the declarative input kwargs exactly in ArcGarage's base app layer: `required`, `optional_for_user`, and `vector_layer_geometry`. Preserve the same meaning. `required=False` means the parameter is optional everywhere. `optional_for_user=True` means the interactive ArcGIS Pro UI may leave it blank, but any automated execution surface should still rely on `required`. `vector_layer_geometry` should accept `"point"`, `"line"`, `"polygon"`, or a sequence of those values, with the same alias normalization used in QGarage.
+For `InputType.POINT` in the ArcGIS Pro dashboard, provide a map-click control that captures exactly one coordinate in the active map's spatial reference. Convert the selection into a temporary, one-feature point feature layer before serializing it. App code must receive the normal vector-layer shim/API used by `VECTOR_LAYER`, including `.source()`, `.name()`, `.crs().authid()`, `.extent()`, and `.featureCount()`; it must not receive host-specific coordinate tuples or ArcPy geometry objects. Clearing the control must produce an empty value. In ArcGarage's geoprocessing or batch surface, use a point-feature-layer parameter instead of map capture.
 
-Apply the contract in three places. First, at widget creation time, allow empty values only when `required=False` or `optional_for_user=True`. Second, if ArcGIS Pro exposes geometry-specific layer pickers or filters, apply them directly for vector inputs. Third, always keep a pre-execution validation fallback that checks the resolved layer geometry family before running business logic. That fallback is what guarantees behavior stays consistent even if a particular ArcGIS Pro picker cannot express the exact restriction.
+Apply the contract in three places: allow empty widget values only for `required=False` or `optional_for_user=True`; restrict selectable vector layers to their declared geometry when the ArcGIS Pro control supports it; and always validate the resolved geometry before business logic runs. The required validation order is framework-level contract validation, then the app's `validate_inputs()`, then execution. This fallback preserves parity when a host widget cannot enforce every restriction.
 
-The validation order should stay the same across both products. Run framework-level contract validation first, then app-specific `validate_inputs()`, then execute the app logic. That keeps generic guarantees in one place and avoids every app having to repeat geometry and optionality checks. It also preserves backward compatibility because older apps that only use `required` continue to behave exactly as they do today.
-
-Recommended migration approach for ArcGarage is incremental. Leave existing apps unchanged unless they need one of the two new behaviors. Add `vector_layer_geometry` only where tool logic already assumes a point, line, or polygon layer. Add `optional_for_user=True` only where an interactive user may defer a value that a batch or automated workflow should still treat as required. That keeps the shared app contract stable and minimizes risk while aligning QGarage and ArcGarage on the same declarative API.
+Adopt the additions incrementally. Existing apps need no change. Add `InputType.POINT` where a tool needs a single user-selected location, and add `vector_layer_geometry` where existing logic assumes a geometry family. This keeps old apps compatible while ensuring QGarage and ArcGarage serialize and validate the same contract.
 
 **Layer and CRS shims** in the subprocess have:
 - `.name()` — layer/CRS name
@@ -466,7 +473,7 @@ No code changes needed — it's automatic.
 2. **Load**: App class is imported, `__init__` runs, inputs are declared
 3. **Build UI**: For declarative apps, a form is auto-generated; for dynamic apps, `build_dynamic_widget()` is called
 4. **Run**: User clicks **Run**
-   - `validate_inputs()` is called (optional; block execution if needed)
+    - QGarage validates the declarative input contract, then calls `validate_inputs()` (optional; block execution if needed)
    - Inputs are serialized and passed to subprocess
    - `execute_logic()` runs in subprocess (or you handle it in dynamic mode)
    - Results are written to JSON

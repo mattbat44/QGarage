@@ -16,7 +16,7 @@
 }
 
 /* Action buttons in toolbar */
-#qgarageInstallButton, #qgarageNewAppButton, #qgarageSettingsButton {
+#qgarageInstallButton, #qgarageMarketplaceButton, #qgarageNewAppButton, #qgarageSettingsButton {
     background-color: #4a9d6f;
     color: white;
     border: none;
@@ -25,10 +25,10 @@
     font-weight: 500;
     font-size: 11px;
 }
-#qgarageInstallButton:hover, #qgarageNewAppButton:hover, #qgarageSettingsButton:hover {
+#qgarageInstallButton:hover, #qgarageMarketplaceButton:hover, #qgarageNewAppButton:hover, #qgarageSettingsButton:hover {
     background-color: #5bb382;
 }
-#qgarageInstallButton:pressed, #qgarageNewAppButton:pressed, #qgarageSettingsButton:pressed {
+#qgarageInstallButton:pressed, #qgarageMarketplaceButton:pressed, #qgarageNewAppButton:pressed, #qgarageSettingsButton:pressed {
     background-color: #3a7d5f;
 }
 

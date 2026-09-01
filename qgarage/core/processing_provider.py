@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from qgis.core import (
+    QgsProcessing,
     QgsProcessingAlgorithm,
     QgsProcessingException,
     QgsProcessingOutputBoolean,
@@ -108,6 +109,10 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
         inputs = {}
         for spec in app._input_specs:
             inputs[spec.key] = self._parameter_value(spec, parameters, context)
+
+        error = app._validate_declared_inputs(inputs, for_user=False)
+        if error:
+            raise QgsProcessingException(error)
 
         error = app.validate_inputs(inputs)
         if error:
@@ -256,12 +261,15 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
                 optional=optional,
             )
 
-        if spec.input_type == InputType.VECTOR_LAYER:
+        if spec.input_type in (InputType.VECTOR_LAYER, InputType.POINT):
             return QgsProcessingParameterVectorLayer(
                 spec.key,
                 spec.label,
                 defaultValue=default_value,
                 optional=optional,
+                types=[QgsProcessing.SourceType.TypeVectorPoint]
+                if spec.input_type == InputType.POINT
+                else None,
             )
 
         if spec.input_type == InputType.RASTER_LAYER:
@@ -366,7 +374,7 @@ class QGarageProcessingAlgorithm(QgsProcessingAlgorithm):
                 return spec.choices[index]
             return spec.default
 
-        if spec.input_type == InputType.VECTOR_LAYER:
+        if spec.input_type in (InputType.VECTOR_LAYER, InputType.POINT):
             return self.parameterAsVectorLayer(parameters, spec.key, context)
 
         if spec.input_type == InputType.RASTER_LAYER:

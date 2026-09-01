@@ -9,6 +9,8 @@ from typing import Any, Optional
 
 from qgis.core import (
     QgsCoordinateReferenceSystem,
+    QgsFeature,
+    QgsGeometry,
     QgsMapLayerProxyModel,
     QgsProject,
     QgsRasterLayer,
@@ -18,6 +20,7 @@ from qgis.gui import (
     QgsFieldComboBox,
     QgsFileWidget,
     QgsMapLayerComboBox,
+    QgsMapToolEmitPoint,
     QgsProjectionSelectionWidget,
 )
 from qgis.PyQt.QtCore import QObject, pyqtSignal
@@ -66,6 +69,7 @@ class InputType(Enum):
     FIELD = auto()
     CRS = auto()
     TEXT_AREA = auto()
+    POINT = auto()
 
 
 class OutputType(Enum):
@@ -135,6 +139,86 @@ class _LayerBridge(QObject):
     """
 
     layer_requested = pyqtSignal(dict)
+
+
+class _PointCaptureWidget(QWidget):
+    """Capture one canvas coordinate as a temporary point vector layer."""
+
+    def __init__(self):
+        super().__init__()
+        self._layer: Optional[QgsVectorLayer] = None
+        self._canvas = None
+        self._map_tool: Optional[QgsMapToolEmitPoint] = None
+        self._previous_map_tool = None
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self._display = QLineEdit()
+        self._display.setReadOnly(True)
+        self._display.setPlaceholderText("No point selected")
+        layout.addWidget(self._display)
+
+        self._pick_button = QPushButton("Pick")
+        self._pick_button.setToolTip("Pick a point from the map canvas")
+        self._pick_button.clicked.connect(self._start_capture)
+        layout.addWidget(self._pick_button)
+
+        self._clear_button = QToolButton()
+        self._clear_button.setText("X")
+        self._clear_button.setToolTip("Clear selected point")
+        self._clear_button.clicked.connect(self.clear)
+        layout.addWidget(self._clear_button)
+
+    def currentLayer(self) -> Optional[QgsVectorLayer]:
+        """Return the temporary one-feature layer for normal serialization."""
+        return self._layer
+
+    def clear(self) -> None:
+        self._layer = None
+        self._display.clear()
+
+    def _start_capture(self) -> None:
+        from qgis.utils import iface
+
+        canvas = iface.mapCanvas()
+        if canvas is None:
+            return
+
+        self._canvas = canvas
+        self._previous_map_tool = canvas.mapTool()
+        self._map_tool = QgsMapToolEmitPoint(canvas)
+        self._map_tool.canvasClicked.connect(self._capture_point)
+        canvas.setMapTool(self._map_tool)
+        self._pick_button.setEnabled(False)
+
+    def _capture_point(self, point, _button) -> None:
+        if self._canvas is None:
+            return
+
+        crs = self._canvas.mapSettings().destinationCrs()
+        layer = QgsVectorLayer(
+            f"Point?crs={crs.authid()}", "Temporary Point", "memory"
+        )
+        feature = QgsFeature(layer.fields())
+        feature.setGeometry(QgsGeometry.fromPointXY(point))
+        layer.dataProvider().addFeatures([feature])
+        layer.updateExtents()
+
+        self._layer = layer
+        self._display.setText(f"{point.x():.8f}, {point.y():.8f} ({crs.authid()})")
+        self._stop_capture()
+
+    def _stop_capture(self) -> None:
+        if self._canvas is not None and self._map_tool is not None:
+            if self._previous_map_tool is not None:
+                self._canvas.setMapTool(self._previous_map_tool)
+            else:
+                self._canvas.unsetMapTool(self._map_tool)
+        self._map_tool = None
+        self._previous_map_tool = None
+        self._canvas = None
+        self._pick_button.setEnabled(True)
 
 
 class BaseApp(ABC):
@@ -491,6 +575,9 @@ class BaseApp(ABC):
                 w.setText(str(spec.default))
             return w
 
+        if spec.input_type == InputType.POINT:
+            return _PointCaptureWidget()
+
         return QLineEdit()
 
     def _collect_inputs(self) -> dict[str, Any]:
@@ -516,6 +603,8 @@ class BaseApp(ABC):
                 InputType.RASTER_LAYER,
                 InputType.ANY_LAYER,
             ):
+                values[spec.key] = w.currentLayer()
+            elif spec.input_type == InputType.POINT:
                 values[spec.key] = w.currentLayer()
             elif spec.input_type == InputType.FIELD:
                 values[spec.key] = w.currentField()
@@ -652,10 +741,14 @@ class BaseApp(ABC):
             if is_required and (value is None or value == ""):
                 return f"Required input missing: {spec.label}"
 
-            if spec.input_type != InputType.VECTOR_LAYER or value is None:
+            if spec.input_type not in (InputType.VECTOR_LAYER, InputType.POINT) or value is None:
                 continue
 
-            accepted = self._normalize_vector_geometry_contract(spec.vector_layer_geometry)
+            accepted = (
+                {"point"}
+                if spec.input_type == InputType.POINT
+                else self._normalize_vector_geometry_contract(spec.vector_layer_geometry)
+            )
             if not accepted:
                 continue
 
@@ -693,6 +786,8 @@ class BaseApp(ABC):
                 out[spec.key] = val
             elif spec.input_type in (InputType.FILE_PATH, InputType.FOLDER_PATH):
                 out[spec.key] = str(val) if val else ""
+            elif spec.input_type == InputType.POINT:
+                out[spec.key] = None
             elif spec.input_type in (
                 InputType.VECTOR_LAYER,
                 InputType.RASTER_LAYER,

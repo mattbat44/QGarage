@@ -13,12 +13,12 @@ from qgis.PyQt.QtCore import Qt
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
+from .core.app_registry import AppEntry, AppRegistry
 from .core.app_update import (
     get_install_source,
     record_update_check,
     should_check_for_updates,
 )
-from .core.app_registry import AppEntry, AppRegistry
 from .core.constants import PIXI_TOML_FILENAME
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
@@ -100,9 +100,11 @@ class QGaragePlugin:
 
         # Create dashboard and wire up
         self.dock = DashboardDock(self.iface)
+        self.dock.set_marketplace_apps_dir(apps_dir)
         if self.registry is not None:
             self.dock.set_registry(self.registry)
         self.dock.install_requested.connect(self._on_install_requested)
+        self.dock.marketplace_app_installed.connect(self._on_app_installed)
         self.dock.new_app_requested.connect(self._on_new_app_requested)
         self.dock.refresh_app_requested.connect(self._on_refresh_app_requested)
         self.dock.check_updates_requested.connect(self._on_check_updates_requested)
@@ -145,6 +147,8 @@ class QGaragePlugin:
         if self.dock is not None and not sip.isdeleted(self.dock):
             with contextlib.suppress(Exception):
                 self.dock.set_registry(None)
+            with contextlib.suppress(Exception):
+                self.dock.stop_marketplace_scan()
             self.iface.removeDockWidget(self.dock)
             self.dock.deleteLater()
             self.dock = None
@@ -294,11 +298,6 @@ class QGaragePlugin:
             self.registry.discover()
             self.dock.refresh_cards()
             self._refresh_processing_provider()
-            toolbox_entry = self.registry.toolbox_entries.get(item_id)
-            if toolbox_entry is not None:
-                for app_entry in toolbox_entry.app_entries.values():
-                    self._prepare_app_environment_async(app_entry)
-                    self._maybe_check_for_app_updates(app_entry)
         else:
             # Handle single app installation
             # If the app already exists, unload it and remove its card first
@@ -317,8 +316,6 @@ class QGaragePlugin:
             entry = AppEntry(apps_dir / item_id, app_meta)
             self.registry.register_entry(entry)
             self.dock.add_card(entry)
-            self._prepare_app_environment_async(entry)
-            self._maybe_check_for_app_updates(entry)
 
     def _prepare_app_environment_async(
         self, entry: AppEntry, *, clean: bool = False
@@ -375,6 +372,8 @@ class QGaragePlugin:
         """Safely verify and cache a backend only when an app requests it."""
         if tool == "uv":
             if self.uv_bridge is not None:
+                self._clear_backend_availability_errors(tool)
+                self._emit_backend_ready(tool)
                 return True
             try:
                 self.uv_bridge = UvBridge(get_uv_executable())
@@ -383,6 +382,8 @@ class QGaragePlugin:
                 return False
         else:
             if self.pixi_bridge is not None:
+                self._clear_backend_availability_errors(tool)
+                self._emit_backend_ready(tool)
                 return True
             try:
                 from .core.pixi_bridge import PixiBridge
@@ -397,8 +398,31 @@ class QGaragePlugin:
             self.registry.pixi_bridge = self.pixi_bridge
             self.registry.loader.uv_bridge = self.uv_bridge
             self.registry.loader.pixi_bridge = self.pixi_bridge
+            self._clear_backend_availability_errors(tool)
         self._update_status_bar()
+        self._emit_backend_ready(tool)
         return True
+
+    def _emit_backend_ready(self, tool: str) -> None:
+        """Notify the dashboard that a backend has been verified."""
+        if self.dock is not None:
+            self.dock.backend_ready.emit(tool)
+
+    def _clear_backend_availability_errors(self, tool: str) -> None:
+        """Return apps blocked only by an unverified backend to neutral state."""
+        if self.registry is None or self.dock is None:
+            return
+        for entry in self.registry.iter_entries():
+            required_tool = (
+                "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+            )
+            if required_tool != tool or entry.instance is not None:
+                continue
+            error_text = entry.health.last_error or ""
+            if "No environment backend available" not in error_text:
+                continue
+            entry.health.reset()
+            self.dock.update_card_state(entry.app_id)
 
     def _on_env_setup_finished(
         self, app_id: str, success: bool, error_text: str

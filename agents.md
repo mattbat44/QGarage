@@ -215,6 +215,7 @@ self.add_input("output_format", "Output Format", InputType.CHOICE,
 | `FIELD` | Field combo | `str` | "id" |
 | `CRS` | CRS picker | Shim object | Has `.authid()` (e.g., "EPSG:4326") |
 | `TEXT_AREA` | Multi-line text | `str` | Multi-paragraph text |
+| `POINT` | Map-canvas point picker | Point-layer shim | One selected coordinate as a temporary point layer |
 
 #### Common kwargs for `add_input()`
 
@@ -240,6 +241,7 @@ Use the same declarative contract in both hosts so one app definition can serve 
 - `optional_for_user=True` means the interactive user may leave the input blank. It does not make the parameter optional for automated or batch execution unless `required=False` is also set.
 - `vector_layer_geometry` applies only to `InputType.VECTOR_LAYER` and should accept `"point"`, `"line"`, `"polygon"`, or a sequence of those values.
 - Geometry aliases should normalize consistently across hosts, so values like `points`, `linestring`, and `multipolygon` collapse to the same three geometry families.
+- `InputType.POINT` represents exactly one point. Interactive hosts capture it from their map UI; automated hosts accept a point vector/feature layer. In both cases, app logic receives the normal vector-layer shim, not a host-specific coordinate or geometry object.
 
 Recommended implementation methodology for ArcGarage:
 
@@ -248,6 +250,22 @@ Recommended implementation methodology for ArcGarage:
 3. Keep a shared pre-execution validation fallback so geometry and requiredness are enforced even when UI widgets cannot express the full contract.
 4. Run framework contract validation before app-specific `validate_inputs()` so apps do not need to duplicate generic checks.
 5. Leave existing apps untouched unless they need one of the new behaviors.
+
+### ArcGarage Point Selection Implementation
+
+Implement `InputType.POINT` in ArcGarage without changing how an app declares it:
+
+```python
+self.add_input("location", "Location", InputType.POINT)
+```
+
+1. Add `POINT` to ArcGarage's `InputType` and map it to a map-click picker in the interactive UI.
+2. On one map click, create an in-memory, one-feature point layer in the active map's spatial reference. Display the selected coordinate and provide a clear action.
+3. Serialize that temporary layer with the exact same vector-layer payload and shim API as `VECTOR_LAYER`: `.source()`, `.name()`, `.crs().authid()`, `.extent()`, and `.featureCount()`.
+4. In ArcGarage's geoprocessing or batch UI, map `POINT` to a point feature-layer parameter rather than a map picker.
+5. Run shared framework validation before app-specific `validate_inputs()`: reject a missing required point and reject a non-point layer. Respect `required=False` and `optional_for_user=True` using the shared meanings above.
+
+Do not serialize a bare coordinate pair, ArcPy geometry, or another host-specific type to app logic. A single temporary point layer is the interoperability boundary that lets the same app work in QGIS and ArcGIS Pro.
 
 Example:
 
