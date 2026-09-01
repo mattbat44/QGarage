@@ -3,15 +3,22 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+from qgarage.core.app_state import AppHealth, AppState
 from qgarage.plugin import QGaragePlugin
 
 
 class DummySignal:
     def __init__(self):
         self.callbacks = []
+        self.emissions = []
 
     def connect(self, callback):
         self.callbacks.append(callback)
+
+    def emit(self, *args):
+        self.emissions.append(args)
+        for callback in self.callbacks:
+            callback(*args)
 
 
 def test_dummy_signal_tracks_multiple_callbacks():
@@ -60,6 +67,8 @@ class DummyDock:
     def __init__(self, iface):
         self.iface = iface
         self.install_requested = DummySignal()
+        self.marketplace_app_installed = DummySignal()
+        self.backend_ready = DummySignal()
         self.new_app_requested = DummySignal()
         self.refresh_app_requested = DummySignal()
         self.check_updates_requested = DummySignal()
@@ -75,11 +84,20 @@ class DummyDock:
     def set_registry(self, registry):
         self.registry = registry
 
+    def set_marketplace_apps_dir(self, apps_dir):
+        self.marketplace_apps_dir = apps_dir
+
+    def stop_marketplace_scan(self):
+        pass
+
     def setVisible(self, value):
         self.visible = value
 
     def update_card_state(self, app_id):
         self.updated_app_id = app_id
+
+    def add_card(self, entry):
+        self.added_app_id = entry.app_id
 
     @property
     def current_app_id(self):
@@ -251,6 +269,60 @@ def test_install_dialog_uses_managed_apps_dir(monkeypatch, tmp_path):
 
     assert captured["apps_dir"] == managed_apps_dir
     assert captured["executed"] is True
+
+
+def test_install_defers_environment_setup_until_app_is_opened(monkeypatch, tmp_path):
+    iface = DummyIface()
+    plugin = QGaragePlugin(iface)
+    apps_dir = tmp_path / ".garage"
+    app_dir = apps_dir / "lazy_app"
+    app_dir.mkdir(parents=True)
+    (app_dir / "app_meta.json").write_text(
+        '{"id": "lazy_app", "name": "Lazy App"}', encoding="utf-8"
+    )
+    plugin.APPS_DIR = apps_dir
+    plugin.registry = MagicMock()
+    plugin.registry.entries = {}
+    plugin.dock = DummyDock(iface)
+    prepare_environment = MagicMock()
+    monkeypatch.setattr(plugin, "_prepare_app_environment_async", prepare_environment)
+
+    plugin._on_app_installed("lazy_app", False)
+
+    plugin.registry.register_entry.assert_called_once()
+    assert plugin.dock.added_app_id == "lazy_app"
+    prepare_environment.assert_not_called()
+
+
+def test_verifying_backend_clears_only_stale_backend_errors(monkeypatch, tmp_path):
+    iface = DummyIface()
+    plugin = QGaragePlugin(iface)
+    entry = SimpleNamespace(
+        app_id="lazy_app",
+        app_dir=tmp_path / "lazy_app",
+        instance=None,
+        health=AppHealth(),
+    )
+    entry.health.record_error("No environment backend available for lazy_app")
+    real_error_entry = SimpleNamespace(
+        app_id="broken_app",
+        app_dir=tmp_path / "broken_app",
+        instance=None,
+        health=AppHealth(),
+    )
+    real_error_entry.health.record_error("SyntaxError: invalid app source")
+    plugin.registry = MagicMock()
+    plugin.registry.entries = {"lazy_app": entry, "broken_app": real_error_entry}
+    plugin.registry.iter_entries.return_value = [entry, real_error_entry]
+    plugin.dock = DummyDock(iface)
+    monkeypatch.setattr("qgarage.plugin.get_uv_executable", lambda: "uv")
+    monkeypatch.setattr("qgarage.plugin.UvBridge", lambda executable: MagicMock())
+
+    assert plugin._ensure_tool_bridge("uv")
+
+    assert entry.health.state == AppState.DISCOVERED
+    assert real_error_entry.health.state == AppState.ERROR
+    assert plugin.dock.backend_ready.emissions == [("uv",)]
 
 
 def test_init_gui_triggers_update_checks(monkeypatch):

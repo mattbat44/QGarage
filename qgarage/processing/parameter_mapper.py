@@ -127,11 +127,13 @@ def create_processing_parameter(spec: InputSpec):
             optional=optional,
         )
 
-    elif spec.input_type == InputType.VECTOR_LAYER:
+    elif spec.input_type in (InputType.VECTOR_LAYER, InputType.POINT):
         return QgsProcessingParameterVectorLayer(
             name,
             description,
-            types=_vector_processing_types(spec),
+            types=[QgsProcessing.SourceType.TypeVectorPoint]
+            if spec.input_type == InputType.POINT
+            else _vector_processing_types(spec),
             optional=optional,
         )
 
@@ -226,7 +228,7 @@ def extract_parameter_value(
     elif spec.input_type in (InputType.FILE_PATH, InputType.FOLDER_PATH):
         return algorithm.parameterAsFile(parameters, param_key, context)
 
-    elif spec.input_type == InputType.VECTOR_LAYER:
+    elif spec.input_type in (InputType.VECTOR_LAYER, InputType.POINT):
         return algorithm.parameterAsVectorLayer(parameters, param_key, context)
 
     elif spec.input_type == InputType.RASTER_LAYER:

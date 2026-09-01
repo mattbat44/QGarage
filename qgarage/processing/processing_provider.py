@@ -50,13 +50,11 @@ class QGarageProcessingProvider(QgsProcessingProvider):
         This filters out dynamic apps (those with custom build_dynamic_widget)
         and only registers declarative apps with execute_logic().
         """
-        # Ensure all apps are loaded
-        self.registry.load_all()
-
         for app_id, entry in self.registry.entries.items():
-            # Skip if app failed to load or has no instance
+            # Apps load only after the user opens them, so startup never probes
+            # an unavailable uv or pixi backend.
             if entry.instance is None:
-                logger.debug(f"Skipping app '{app_id}' - no instance available")
+                logger.debug(f"Skipping unloaded app '{app_id}'")
                 continue
 
             # Skip dynamic apps - they have custom UIs and don't fit the

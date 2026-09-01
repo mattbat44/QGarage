@@ -3,7 +3,7 @@ name=QGarage
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
 description=Modular app-hosting framework for QGIS with per-app uv/pixi environments, Processing integration, and a unified dashboard for isolated mini-tools.
-version=2.3.4
+version=2.6
 author=Matt Adams
 email=mattaadamsnz@gmail.com
 about=QGarage is a plugin-within-a-plugin framework for QGIS that installs, manages, and runs isolated mini-tools from a single dashboard. Version 2 adds dual uv/pixi backends for app environments, asynchronous environment preparation during installs, clearer setup error reporting, Processing Toolbox integration for declarative apps, richer scaffolding with backend selection and custom destinations, and bundled TestToolbox examples for both uv and pixi workflows. Install the plugin from the QGIS Plugin Manager, then configure uv and/or pixi in QGarage settings based on the apps you want to run.
@@ -18,6 +18,13 @@ deprecated=False
 hasProcessingProvider=yes
 server=False
 changelog=
+	2.6.0: feat: Implement marketplace scanning and caching functionality
+		- Added Marketplace and MarketplaceCache classes for managing local app and toolbox discovery.
+		- Introduced scanning capabilities to identify installable items without modifying the filesystem.
+		- Implemented caching of marketplace data to improve performance and reduce redundant scans.
+		- Enhanced the ToolboxCardWidget to support primary actions for toolboxes.
+		- Added fuzzy search capabilities for improved user experience in the marketplace pane.
+		- Created tests for marketplace scanning, caching, and search functionalities to ensure reliability.
 	2.3.0: Prompted installation of uv and pixi. Optional parameters and specific vector type requirements.
 	2.2.7: Add backward-compatible input contract extensions for dashboard-only optional parameters and vector geometry-restricted layer inputs.
 	2.2.0: Updates to include installation prompts for uv and pixi, and compatibility fixes.

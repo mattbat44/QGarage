@@ -45,6 +45,11 @@ class AppCardWidget(QFrame):
         update_available: bool = False,
         available_version: Optional[str] = None,
         checking_updates: bool = False,
+        primary_action: str = "Open",
+        action_enabled: Optional[bool] = None,
+        show_state_badge: bool = True,
+        open_on_card_click: bool = True,
+        show_context_menu: bool = True,
         parent=None,
     ):
         super().__init__(parent)
@@ -55,6 +60,12 @@ class AppCardWidget(QFrame):
         self._update_available = update_available
         self._available_version = available_version
         self._checking_updates = checking_updates
+        self._primary_action = primary_action
+        self._action_enabled = action_enabled
+        self._show_state_badge = show_state_badge
+        self._open_on_card_click = open_on_card_click
+        self._show_context_menu = show_context_menu
+        self._backend_checked = False
 
         self.setProperty("class", "AppCardWidget")
         self.setFrameShape(QFrame.Shape.StyledPanel)
@@ -108,7 +119,7 @@ class AppCardWidget(QFrame):
         btn_layout = QVBoxLayout()
         btn_layout.setSpacing(4)
 
-        self._run_button = QPushButton("Open")
+        self._run_button = QPushButton(self._primary_action)
         self._run_button.setObjectName("appCardRunButton")
         self._run_button.clicked.connect(lambda: self.run_clicked.emit(self.app_id))
         btn_layout.addWidget(self._run_button)
@@ -130,6 +141,11 @@ class AppCardWidget(QFrame):
         self._update_state_badge()
         self._refresh_update_button()
 
+    def set_backend_checked(self, checked: bool = True) -> None:
+        """Hide the neutral discovery badge once this app's backend is verified."""
+        self._backend_checked = checked
+        self._update_state_badge()
+
     def set_update_status(
         self,
         *,
@@ -145,6 +161,7 @@ class AppCardWidget(QFrame):
     def _update_state_badge(self):
         state = self._health.state
         badge_map = {
+            AppState.DISCOVERED: ("Checking", "background-color: #78909C;"),
             AppState.RUNNING: ("Running", "background-color: #2196F3;"),
             AppState.ERROR: ("Error", "background-color: #FF9800;"),
             AppState.CRASHED: ("Crashed", "background-color: #F44336;"),
@@ -153,9 +170,11 @@ class AppCardWidget(QFrame):
             AppState.LOADING: ("Loading", "background-color: #2196F3;"),
         }
         text, style = badge_map.get(state, ("", ""))
+        if state == AppState.DISCOVERED and self._backend_checked:
+            text = ""
         self._badge_label.setText(text)
         self._badge_label.setStyleSheet(style)
-        self._badge_label.setVisible(bool(text))
+        self._badge_label.setVisible(self._show_state_badge and bool(text))
 
         if state == AppState.ERROR and self._health.last_error:
             self._badge_label.setToolTip(
@@ -164,7 +183,11 @@ class AppCardWidget(QFrame):
             )
 
         self._reset_button.setVisible(state == AppState.CRASHED)
-        self._run_button.setEnabled(state in (AppState.READY, AppState.ERROR))
+        self._run_button.setEnabled(
+            self._action_enabled
+            if self._action_enabled is not None
+            else state in (AppState.DISCOVERED, AppState.READY, AppState.ERROR)
+        )
 
     def _refresh_update_button(self) -> None:
         show_button = self._update_available and not self._checking_updates
@@ -208,7 +231,7 @@ class AppCardWidget(QFrame):
         Keeps button clicks working normally by ignoring clicks that originate
         from a QPushButton child.
         """
-        if event.button() == Qt.MouseButton.LeftButton:
+        if self._open_on_card_click and event.button() == Qt.MouseButton.LeftButton:
             click_pos = (
                 event.pos() if hasattr(event, "pos") else event.position().toPoint()
             )
@@ -221,6 +244,9 @@ class AppCardWidget(QFrame):
 
     def contextMenuEvent(self, event):
         """Show a right-click context menu with app management actions."""
+        if not self._show_context_menu:
+            event.ignore()
+            return
         menu = QMenu(self)
 
         open_action = QAction("Open", self)
