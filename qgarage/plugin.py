@@ -9,7 +9,7 @@ from typing import Optional
 from qgis.core import QgsApplication
 from qgis.gui import QgisInterface
 from qgis.PyQt import sip
-from qgis.PyQt.QtCore import Qt
+from qgis.PyQt.QtCore import Qt, QTimer
 from qgis.PyQt.QtGui import QIcon
 from qgis.PyQt.QtWidgets import QAction, QMessageBox
 
@@ -28,6 +28,7 @@ from .ui.dashboard_dock import DashboardDock
 from .ui.install_dialog import InstallDialog
 from .ui.scaffold_dialog import ScaffoldDialog
 from .workers.app_update_worker import AppUpdateWorker
+from .workers.backend_check_worker import BackendCheckWorker
 from .workers.env_setup_worker import EnvSetupWorker
 from .workers.install_tool_worker import InstallToolWorker
 from .workers.update_check_worker import UpdateCheckWorker
@@ -56,6 +57,8 @@ class QGaragePlugin:
         self.uv_bridge: Optional[UvBridge] = None
         self.pixi_bridge = None
         self._env_workers: dict[str, EnvSetupWorker] = {}
+        self._backend_check_workers: dict[str, BackendCheckWorker] = {}
+        self._backend_check_timer: Optional[QTimer] = None
         self._update_check_workers: dict[str, UpdateCheckWorker] = {}
         self._update_workers: dict[str, AppUpdateWorker] = {}
         # One active tool-install worker at a time (uv or pixi)
@@ -120,6 +123,10 @@ class QGaragePlugin:
         )
         self._update_status_bar()
         self.iface.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.dock)
+        self._backend_check_timer = QTimer()
+        self._backend_check_timer.setSingleShot(True)
+        self._backend_check_timer.timeout.connect(self._start_backend_checks)
+        self._backend_check_timer.start(2500)
         self.dock.setVisible(False)
         self.dock.visibilityChanged.connect(self.action.setChecked)
         self.dock.visibilityChanged.connect(self._on_dock_visibility_changed)
@@ -131,6 +138,14 @@ class QGaragePlugin:
 
     def unload(self):
         """Called by QGIS when the plugin is unloaded."""
+        if self._backend_check_timer is not None:
+            self._backend_check_timer.stop()
+            self._backend_check_timer = None
+        for worker in self._backend_check_workers.values():
+            with contextlib.suppress(Exception):
+                worker.quit()
+                worker.wait()
+        self._backend_check_workers.clear()
         self._stop_env_workers()
 
         # Unregister Processing provider
@@ -363,17 +378,22 @@ class QGaragePlugin:
 
         self._pending_app_open_id = app_id
         tool = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
-        if not self._ensure_tool_bridge(tool):
-            self._on_tool_install_requested(tool)
+        available = self._ensure_tool_bridge(tool)
+        if available is None:
+            return
+        if not available:
+            self._prompt_tool_install(tool)
             return
         self._prepare_app_environment_async(entry)
 
-    def _ensure_tool_bridge(self, tool: str) -> bool:
+    def _ensure_tool_bridge(self, tool: str) -> Optional[bool]:
         """Safely verify and cache a backend only when an app requests it."""
+        if tool in self._backend_check_workers:
+            return None
         if tool == "uv":
             if self.uv_bridge is not None:
                 self._clear_backend_availability_errors(tool)
-                self._emit_backend_ready(tool)
+                self._emit_backend_checked(tool)
                 return True
             try:
                 self.uv_bridge = UvBridge(get_uv_executable())
@@ -383,7 +403,7 @@ class QGaragePlugin:
         else:
             if self.pixi_bridge is not None:
                 self._clear_backend_availability_errors(tool)
-                self._emit_backend_ready(tool)
+                self._emit_backend_checked(tool)
                 return True
             try:
                 from .core.pixi_bridge import PixiBridge
@@ -393,20 +413,111 @@ class QGaragePlugin:
                 log_info(f"pixi is not available: {exc}", "plugin")
                 return False
 
-        if self.registry is not None:
-            self.registry.uv_bridge = self.uv_bridge
-            self.registry.pixi_bridge = self.pixi_bridge
-            self.registry.loader.uv_bridge = self.uv_bridge
-            self.registry.loader.pixi_bridge = self.pixi_bridge
-            self._clear_backend_availability_errors(tool)
+        self._cache_tool_bridges()
+        self._clear_backend_availability_errors(tool)
         self._update_status_bar()
-        self._emit_backend_ready(tool)
+        self._emit_backend_checked(tool)
         return True
 
-    def _emit_backend_ready(self, tool: str) -> None:
-        """Notify the dashboard that a backend has been verified."""
+    def _cache_tool_bridges(self) -> None:
+        if self.registry is None:
+            return
+        self.registry.uv_bridge = self.uv_bridge
+        self.registry.pixi_bridge = self.pixi_bridge
+        self.registry.loader.uv_bridge = self.uv_bridge
+        self.registry.loader.pixi_bridge = self.pixi_bridge
+
+    def _emit_backend_checked(self, tool: str) -> None:
+        """Notify the dashboard that backend availability has been resolved."""
         if self.dock is not None:
-            self.dock.backend_ready.emit(tool)
+            self.dock.backend_checked.emit(tool)
+
+    def _start_backend_checks(self) -> None:
+        """Verify both optional backends in parallel after the UI settles."""
+        if self.dock is None:
+            return
+        for tool, executable in (
+            ("uv", get_uv_executable()),
+            ("pixi", get_pixi_executable()),
+        ):
+            if (tool == "uv" and self.uv_bridge is not None) or (
+                tool == "pixi" and self.pixi_bridge is not None
+            ):
+                self._emit_backend_checked(tool)
+                continue
+            self.dock.status_bar.set_tool_checking(tool, True)
+            worker = BackendCheckWorker(tool, executable, parent=self.dock)
+            worker.check_finished.connect(self._on_backend_check_finished)
+            worker.finished.connect(worker.deleteLater)
+            self._backend_check_workers[tool] = worker
+            worker.start()
+
+    def _on_backend_check_finished(
+        self, tool: str, bridge: object | None, error_text: str
+    ) -> None:
+        self._backend_check_workers.pop(tool, None)
+        if self.dock is None:
+            return
+
+        self.dock.status_bar.set_tool_checking(tool, False)
+        if bridge is not None:
+            if tool == "uv":
+                self.uv_bridge = bridge
+            else:
+                self.pixi_bridge = bridge
+            self._cache_tool_bridges()
+            self._clear_backend_availability_errors(tool)
+            self._update_status_bar()
+        elif error_text:
+            log_info(f"{tool} is not available: {error_text}", "plugin")
+
+        self._emit_backend_checked(tool)
+        if bridge is not None:
+            self._resume_pending_app_open(tool)
+        elif self._pending_app_open_id is not None:
+            entry = (
+                self.registry.entries.get(self._pending_app_open_id)
+                if self.registry is not None
+                else None
+            )
+            required_tool = (
+                "pixi"
+                if entry is not None
+                and (entry.app_dir / PIXI_TOML_FILENAME).exists()
+                else "uv"
+            )
+            if required_tool == tool:
+                self._prompt_tool_install(tool)
+        elif not self._backend_check_workers:
+            self._prompt_first_missing_required_backend()
+
+    def _prompt_first_missing_required_backend(self) -> None:
+        if self.registry is None:
+            return
+        for tool in ("uv", "pixi"):
+            bridge = self.uv_bridge if tool == "uv" else self.pixi_bridge
+            if bridge is not None:
+                continue
+            if any(
+                (entry.app_dir / PIXI_TOML_FILENAME).exists() == (tool == "pixi")
+                for entry in self.registry.iter_entries()
+            ):
+                self._prompt_tool_install(tool)
+                return
+
+    def _prompt_tool_install(self, tool: str) -> None:
+        if self.dock is None:
+            return
+        if tool == "uv":
+            command = "irm https://astral.sh/uv/install.ps1 | iex"
+        else:
+            command = "irm -useb https://pixi.sh/install.ps1 | iex"
+        app_name = None
+        if self.registry is not None and self._pending_app_open_id:
+            entry = self.registry.entries.get(self._pending_app_open_id)
+            if entry is not None:
+                app_name = entry.app_name
+        self.dock.prompt_tool_install(tool, command, app_name=app_name)
 
     def _clear_backend_availability_errors(self, tool: str) -> None:
         """Return apps blocked only by an unverified backend to neutral state."""
@@ -537,7 +648,7 @@ class QGaragePlugin:
         self.dock.refresh_cards()
 
         if requirements_changed or pixi_changed:
-            self._prepare_app_environment_async(entry)
+            self._prepare_app_environment_async(entry, clean=True)
             return
 
         self.registry.load_app(app_id)
@@ -652,15 +763,13 @@ class QGaragePlugin:
         if self.dock is None:
             return
 
-        if self._ensure_tool_bridge(tool):
+        available = self._ensure_tool_bridge(tool)
+        if available is None:
+            return
+        if available:
             self._resume_pending_app_open(tool)
             return
-
-        if tool == "uv":
-            command = "irm https://astral.sh/uv/install.ps1 | iex"
-        else:
-            command = "irm -useb https://pixi.sh/install.ps1 | iex"
-        self.dock.prompt_tool_install(tool, command)
+        self._prompt_tool_install(tool)
 
     def _run_tool_install(self, tool: str) -> None:
         """Launch InstallToolWorker for *tool*."""
@@ -704,9 +813,15 @@ class QGaragePlugin:
             return
         self._resume_pending_app_open(tool)
         if self.dock is not None:
-            self.dock.set_tool_install_status(
-                f"{tool} installed successfully. Preparing the app...", running=False
+            message = (
+                f"{tool} installed successfully. Preparing the app..."
+                if self._pending_app_open_id is not None
+                else f"{tool} installed successfully."
             )
+            self.dock.set_tool_install_status(
+                message, running=False
+            )
+        self._prompt_first_missing_required_backend()
 
     def _resume_pending_app_open(self, tool: str) -> None:
         """Continue opening the app that requested a newly available backend."""

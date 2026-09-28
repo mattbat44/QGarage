@@ -4,7 +4,7 @@ from pathlib import Path
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
-from ..core.marketplace import MarketplaceItem, scan_marketplace
+from ..core.marketplace import scan_marketplace
 
 
 class MarketplaceScanWorker(QThread):

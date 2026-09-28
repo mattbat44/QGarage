@@ -605,9 +605,7 @@ class BaseApp(ABC):
                 InputType.VECTOR_LAYER,
                 InputType.RASTER_LAYER,
                 InputType.ANY_LAYER,
-            ):
-                values[spec.key] = w.currentLayer()
-            elif spec.input_type == InputType.POINT:
+            ) or spec.input_type == InputType.POINT:
                 values[spec.key] = w.currentLayer()
             elif spec.input_type == InputType.FIELD:
                 values[spec.key] = w.currentField()

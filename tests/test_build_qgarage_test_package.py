@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import importlib.util
-from pathlib import Path
 import textwrap
+from pathlib import Path
 
 
 def _load_build_module():

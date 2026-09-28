@@ -115,6 +115,31 @@ def test_install_requirements_reports_context_on_failure(uv_bridge, tmp_path):
     assert "resolution failed" in message
 
 
+def test_create_venv_uses_uv_managed_python(uv_bridge, tmp_path):
+    with patch("subprocess.run") as mock_run:
+        mock_run.return_value = MagicMock(stdout="created")
+        uv_bridge.create_venv(tmp_path)
+
+    command = mock_run.call_args.args[0]
+    assert command[:3] == [uv_bridge.uv_exe, "venv", "--managed-python"]
+
+
+def test_ensure_env_skips_setup_when_venv_python_exists(uv_bridge, tmp_path):
+    python_exe = tmp_path / ".venv" / "Scripts" / "python.exe"
+    python_exe.parent.mkdir(parents=True)
+    python_exe.write_text("", encoding="utf-8")
+
+    with (
+        patch.object(uv_bridge, "_python_exe", return_value=python_exe),
+        patch.object(uv_bridge, "create_venv") as create_venv,
+        patch.object(uv_bridge, "install_requirements") as install_requirements,
+    ):
+        uv_bridge.ensure_env(tmp_path)
+
+    create_venv.assert_not_called()
+    install_requirements.assert_not_called()
+
+
 def test_verify_uv_falls_back_to_candidate_dirs_on_windows(tmp_path):
     """Test that _verify_uv checks candidate directories when 'uv' is not on PATH."""
     fake_uv_dir = tmp_path / ".local" / "bin"

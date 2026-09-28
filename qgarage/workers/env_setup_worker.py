@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal

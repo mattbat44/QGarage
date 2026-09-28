@@ -18,6 +18,7 @@ deprecated=False
 hasProcessingProvider=yes
 server=False
 changelog=
+	2.6.1: Minor bug fixes and performance improvements
 	2.6.0: feat: Implement marketplace scanning and caching functionality
 		- Added Marketplace and MarketplaceCache classes for managing local app and toolbox discovery.
 		- Introduced scanning capabilities to identify installable items without modifying the filesystem.

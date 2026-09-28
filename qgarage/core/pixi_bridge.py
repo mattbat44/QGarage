@@ -220,17 +220,23 @@ class PixiBridge:
             ) from exc
 
     def ensure_env(self, app_dir: Path) -> None:
-        """Create or update the pixi environment for an app.
-
-        Runs ``pixi install`` which is idempotent — fast when already
-        up-to-date.
-        """
+        """Create the pixi environment once, unless it is missing its Python."""
         manifest = app_dir / PIXI_TOML_FILENAME
         if not manifest.exists():
             log_info(
                 f"No {PIXI_TOML_FILENAME} in {app_dir}, skipping pixi install",
                 "pixi_bridge",
             )
+            return
+
+        env_dir = app_dir / PIXI_ENV_DIR / "envs" / "default"
+        python_exe = (
+            env_dir / "python.exe"
+            if platform.system() == "Windows"
+            else env_dir / "bin" / "python"
+        )
+        if python_exe.is_file():
+            log_info(f"Using existing pixi environment at {env_dir}", "pixi_bridge")
             return
 
         cmd = [

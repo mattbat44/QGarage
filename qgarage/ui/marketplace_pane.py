@@ -22,7 +22,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.app_registry import AppEntry, ToolboxEntry
 from ..core.app_state import AppHealth
-from ..core.marketplace import MarketplaceItem, scan_marketplace
+from ..core.marketplace import MarketplaceItem
 from ..core.marketplace_cache import MarketplaceCache
 from ..core.search import fuzzy_matches
 from ..workers.download_worker import LocalInstallWorker
@@ -214,9 +214,7 @@ class MarketplacePane(QWidget):
             return
         self._items = items
         scan_time = datetime.now(timezone.utc)
-        self._scan_times = {
-            directory: scan_time for directory in self._directories
-        }
+        self._scan_times = dict.fromkeys(self._directories, scan_time)
         self._stale_prompt_shown = True
         self._rescan_prompt.setVisible(False)
         self._persist_cache()
