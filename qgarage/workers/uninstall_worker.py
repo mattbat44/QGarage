@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import logging
-import shutil
 from pathlib import Path
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
+
+from ..core.fs_utils import remove_tree
 
 logger = logging.getLogger("qgarage.uninstall_worker")
 
@@ -26,7 +27,7 @@ class UninstallWorker(QThread):
     def run(self):
         try:
             if self.app_dir.exists():
-                shutil.rmtree(self.app_dir)
+                remove_tree(self.app_dir)
                 logger.info(f"Removed app directory: {self.app_dir}")
             self.finished.emit(True, self.app_id)
         except Exception as e:

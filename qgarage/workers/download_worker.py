@@ -19,6 +19,7 @@ from urllib.request import (
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
 from ..core.app_update import stamp_install_source
+from ..core.fs_utils import remove_tree
 
 logger = logging.getLogger("qgarage.download_worker")
 
@@ -215,7 +216,7 @@ class DownloadAndInstallWorker(QThread):
         # Phase 4: Copy to apps directory (60-70%)
         dest_dir = self.apps_dir / app_id
         if dest_dir.exists():
-            shutil.rmtree(dest_dir)
+            remove_tree(dest_dir)
         shutil.copytree(app_source_dir, dest_dir)
         app_meta = stamp_install_source(
             app_meta,
@@ -247,7 +248,7 @@ class DownloadAndInstallWorker(QThread):
         # Copy entire toolbox directory to apps directory
         dest_dir = self.apps_dir / toolbox_id
         if dest_dir.exists():
-            shutil.rmtree(dest_dir)
+            remove_tree(dest_dir)
         shutil.copytree(toolbox_source_dir, dest_dir)
 
         # Normalize icon path for toolbox
@@ -353,7 +354,7 @@ class LocalInstallWorker(QThread):
         # Copy to apps directory
         dest_dir = self.apps_dir / app_id
         if dest_dir.exists():
-            shutil.rmtree(dest_dir)
+            remove_tree(dest_dir)
         shutil.copytree(self.source_dir, dest_dir)
         app_meta = stamp_install_source(
             app_meta,
@@ -384,7 +385,7 @@ class LocalInstallWorker(QThread):
         # Copy to apps directory
         dest_dir = self.apps_dir / toolbox_id
         if dest_dir.exists():
-            shutil.rmtree(dest_dir)
+            remove_tree(dest_dir)
         shutil.copytree(self.source_dir, dest_dir)
 
         # Normalize icon path for toolbox

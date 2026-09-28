@@ -103,6 +103,7 @@ class InputSpec:
     choices: list[str] = field(default_factory=list)
     min_value: float = 0
     max_value: float = 999999
+    decimals: int = 4
     linked_layer_key: str = ""
     file_filter: str = "All Files (*.*)"
     group: str = ""
@@ -284,6 +285,7 @@ class BaseApp(ABC):
             required: When False, the input is optional in both dashboard and Processing.
             optional_for_user: When True, the dashboard UI allows the user to leave the
                 input empty even if Processing should still treat it as required.
+            decimals: For FLOAT inputs, decimal places shown in the dashboard (default 4).
             vector_layer_geometry: For VECTOR_LAYER inputs only, restrict accepted
                 geometry to "point", "line", or "polygon". A sequence can be used to
                 allow multiple geometry families.
@@ -505,7 +507,8 @@ class BaseApp(ABC):
             w = QDoubleSpinBox()
             w.setMinimum(spec.min_value)
             w.setMaximum(spec.max_value)
-            w.setDecimals(4)
+            w.setDecimals(spec.decimals)
+            w.setSingleStep(10 ** -spec.decimals)
             if spec.default is not None:
                 w.setValue(float(spec.default))
             return w

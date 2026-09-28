@@ -20,6 +20,7 @@ from urllib.request import (
     build_opener,
 )
 
+from .fs_utils import remove_tree
 from .constants import (
     APP_META_FILENAME,
     DEFAULT_ENCODING,
@@ -330,7 +331,7 @@ def _clear_installed_app_dir(app_dir: Path) -> None:
         if child.name in {VENV_DIR, PIXI_ENV_DIR}:
             continue
         if child.is_dir():
-            shutil.rmtree(child)
+            remove_tree(child)
         else:
             child.unlink()
 

@@ -7,6 +7,7 @@ from pathlib import Path
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
 from ..core.env_bridge import EnvBridge
+from ..core.fs_utils import remove_tree
 
 logger = logging.getLogger("qgarage.env_setup_worker")
 
@@ -65,7 +66,7 @@ class EnvSetupWorker(QThread):
             env_dir = self.app_dir / name
             if env_dir.exists():
                 try:
-                    shutil.rmtree(env_dir)
+                    remove_tree(env_dir)
                     logger.info("Removed env dir: %s", env_dir)
                 except Exception as exc:
                     logger.warning("Could not remove %s: %s", env_dir, exc)
