@@ -482,8 +482,7 @@ class QGaragePlugin:
             )
             required_tool = (
                 "pixi"
-                if entry is not None
-                and (entry.app_dir / PIXI_TOML_FILENAME).exists()
+                if entry is not None and (entry.app_dir / PIXI_TOML_FILENAME).exists()
                 else "uv"
             )
             if required_tool == tool:
@@ -639,7 +638,9 @@ class QGaragePlugin:
             with open(meta_file, encoding="utf-8") as f:
                 entry.app_meta = json.load(f)
         except (OSError, json.JSONDecodeError) as exc:
-            entry.health.record_error(f"Updated app metadata could not be loaded: {exc}")
+            entry.health.record_error(
+                f"Updated app metadata could not be loaded: {exc}"
+            )
             self.dock.update_card_state(app_id)
             return
         entry.update_available = False
@@ -818,9 +819,7 @@ class QGaragePlugin:
                 if self._pending_app_open_id is not None
                 else f"{tool} installed successfully."
             )
-            self.dock.set_tool_install_status(
-                message, running=False
-            )
+            self.dock.set_tool_install_status(message, running=False)
         self._prompt_first_missing_required_backend()
 
     def _resume_pending_app_open(self, tool: str) -> None:
@@ -831,7 +830,9 @@ class QGaragePlugin:
         if entry is None:
             self._pending_app_open_id = None
             return
-        required_tool = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+        required_tool = (
+            "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+        )
         if required_tool != tool:
             return
         self._prepare_app_environment_async(entry)

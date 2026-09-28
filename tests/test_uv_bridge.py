@@ -184,7 +184,8 @@ def test_verify_uv_converts_timeout_to_runtime_error():
 
     with (
         patch("shutil.which", return_value="/usr/bin/uv"),
-        patch("subprocess.run", side_effect=timeout),pytest.raises(RuntimeError) as exc
+        patch("subprocess.run", side_effect=timeout),
+        pytest.raises(RuntimeError) as exc,
     ):
         UvBridge("uv")
 

@@ -35,6 +35,6 @@ def test_update_init_text_uses_managed_apps_dir():
     updated = module.update_init_text(old)
 
     assert "get_managed_apps_dir" in updated
-    assert 'plugin.APPS_DIR = get_managed_apps_dir()' in updated
+    assert "plugin.APPS_DIR = get_managed_apps_dir()" in updated
     assert 'Path(plugin.PLUGIN_DIR) / "apps"' not in updated
-    assert 'plugin.APPS_DIR = Path(plugin.PLUGIN_DIR)' not in updated
+    assert "plugin.APPS_DIR = Path(plugin.PLUGIN_DIR)" not in updated

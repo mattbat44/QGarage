@@ -131,7 +131,9 @@ class AppCardWidget(QFrame):
 
         self._update_button = QPushButton("Update")
         self._update_button.setVisible(False)
-        self._update_button.clicked.connect(lambda: self.update_clicked.emit(self.app_id))
+        self._update_button.clicked.connect(
+            lambda: self.update_clicked.emit(self.app_id)
+        )
         btn_layout.addWidget(self._update_button)
 
         layout.addLayout(btn_layout)
@@ -268,7 +270,9 @@ class AppCardWidget(QFrame):
             if self._available_version:
                 update_label = f"Update to {self._available_version}"
             update_action = QAction(update_label, self)
-            update_action.triggered.connect(lambda: self.update_clicked.emit(self.app_id))
+            update_action.triggered.connect(
+                lambda: self.update_clicked.emit(self.app_id)
+            )
             menu.addAction(update_action)
 
         refresh_action = QAction("↺  Refresh App", self)

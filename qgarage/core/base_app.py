@@ -198,9 +198,7 @@ class _PointCaptureWidget(QWidget):
             return
 
         crs = self._canvas.mapSettings().destinationCrs()
-        layer = QgsVectorLayer(
-            f"Point?crs={crs.authid()}", "Temporary Point", "memory"
-        )
+        layer = QgsVectorLayer(f"Point?crs={crs.authid()}", "Temporary Point", "memory")
         feature = QgsFeature(layer.fields())
         feature.setGeometry(QgsGeometry.fromPointXY(point))
         layer.dataProvider().addFeatures([feature])
@@ -508,7 +506,7 @@ class BaseApp(ABC):
             w.setMinimum(spec.min_value)
             w.setMaximum(spec.max_value)
             w.setDecimals(spec.decimals)
-            w.setSingleStep(10 ** -spec.decimals)
+            w.setSingleStep(10**-spec.decimals)
             if spec.default is not None:
                 w.setValue(float(spec.default))
             return w
@@ -601,11 +599,15 @@ class BaseApp(ABC):
                 values[spec.key] = w.currentText()
             elif spec.input_type in (InputType.FILE_PATH, InputType.FOLDER_PATH):
                 values[spec.key] = w.filePath()
-            elif spec.input_type in (
-                InputType.VECTOR_LAYER,
-                InputType.RASTER_LAYER,
-                InputType.ANY_LAYER,
-            ) or spec.input_type == InputType.POINT:
+            elif (
+                spec.input_type
+                in (
+                    InputType.VECTOR_LAYER,
+                    InputType.RASTER_LAYER,
+                    InputType.ANY_LAYER,
+                )
+                or spec.input_type == InputType.POINT
+            ):
                 values[spec.key] = w.currentLayer()
             elif spec.input_type == InputType.FIELD:
                 values[spec.key] = w.currentField()
@@ -689,7 +691,11 @@ class BaseApp(ABC):
             "line": getattr(filters, "LineLayer", None),
             "polygon": getattr(filters, "PolygonLayer", None),
         }
-        selected = [filter_map[name] for name in sorted(accepted) if filter_map[name] is not None]
+        selected = [
+            filter_map[name]
+            for name in sorted(accepted)
+            if filter_map[name] is not None
+        ]
         if not selected:
             return filters.VectorLayer
 
@@ -742,13 +748,18 @@ class BaseApp(ABC):
             if is_required and (value is None or value == ""):
                 return f"Required input missing: {spec.label}"
 
-            if spec.input_type not in (InputType.VECTOR_LAYER, InputType.POINT) or value is None:
+            if (
+                spec.input_type not in (InputType.VECTOR_LAYER, InputType.POINT)
+                or value is None
+            ):
                 continue
 
             accepted = (
                 {"point"}
                 if spec.input_type == InputType.POINT
-                else self._normalize_vector_geometry_contract(spec.vector_layer_geometry)
+                else self._normalize_vector_geometry_contract(
+                    spec.vector_layer_geometry
+                )
             )
             if not accepted:
                 continue

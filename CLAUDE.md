@@ -236,6 +236,7 @@ Registers a declarative input. The framework auto-generates the Qt widget.
 
    ```python
    from qgis.core import QgsProject, QgsRasterLayer
+
    QgsProject.instance().addMapLayer(QgsRasterLayer(path, name))
    ```
 
@@ -265,7 +266,9 @@ Add a layer to the QGIS map canvas via a Qt signal. Safe to call from `on_finali
 def on_finalize(self, result):
     if result.get("status") == "success":
         self.add_output_layer(result["output_path"], "My Result")  # auto-detect type
-        self.add_output_layer("/tmp/out.tif", "Raster", provider="gdal", layer_type="raster")
+        self.add_output_layer(
+            "/tmp/out.tif", "Raster", provider="gdal", layer_type="raster"
+        )
         self.add_output_layer("/tmp/out.geojson", "Vector", layer_type="vector")
 ```
 
@@ -389,7 +392,9 @@ class MyDownloader(BaseApp):
         out_folder = inputs["output_folder"]
         out_name = inputs["output_name"]
 
-        self.log(f"Extent: {extent.xMinimum()}, {extent.yMinimum()}, {extent.xMaximum()}, {extent.yMaximum()}")
+        self.log(
+            f"Extent: {extent.xMinimum()}, {extent.yMinimum()}, {extent.xMaximum()}, {extent.yMaximum()}"
+        )
 
         # Download data using extent...
         self.log("Downloading tiles...")
@@ -401,6 +406,7 @@ class MyDownloader(BaseApp):
 
         # Auto-add to QGIS (intercepted by stub, replayed on main thread)
         from qgis.core import QgsProject, QgsRasterLayer
+
         QgsProject.instance().addMapLayer(QgsRasterLayer(out_path, out_name))
 
         return {"status": "success", "message": f"Saved to {out_path}"}
@@ -412,8 +418,12 @@ class MyDownloader(BaseApp):
 class ApiTool(BaseApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.add_input("api_key", "API Key", InputType.STRING,
-                       tooltip="Leave blank to use saved key")
+        self.add_input(
+            "api_key",
+            "API Key",
+            InputType.STRING,
+            tooltip="Leave blank to use saved key",
+        )
 
     def execute_logic(self, inputs):
         import json, os
@@ -439,8 +449,13 @@ class ApiTool(BaseApp):
 
 ```python
 self.add_input("input_layer", "Input Layer", InputType.VECTOR_LAYER, group="Input")
-self.add_input("filter_field", "Filter Field", InputType.FIELD,
-               linked_layer_key="input_layer", group="Input")
+self.add_input(
+    "filter_field",
+    "Filter Field",
+    InputType.FIELD,
+    linked_layer_key="input_layer",
+    group="Input",
+)
 self.add_input("output_folder", "Output Folder", InputType.FOLDER_PATH, group="Output")
 self.add_input("output_name", "Output Name", InputType.STRING, group="Output")
 ```
@@ -457,8 +472,9 @@ def execute_logic(self, inputs):
             {"path": "/tmp/a.tif", "name": "Layer A"},
             {"path": "/tmp/b.tif", "name": "Layer B"},
             {"path": "/tmp/c.geojson", "name": "Layer C"},
-        ]
+        ],
     }
+
 
 def on_finalize(self, result):
     for f in result.get("output_files", []):
@@ -481,6 +497,7 @@ Every app automatically gets **parameter caching** and **run history** — no co
 
 ```python
 from qgarage.core.settings import ParameterCache
+
 ParameterCache("my_app_id").clear()
 ```
 

@@ -212,7 +212,9 @@ class PixiBridge:
             ) from exc
         except subprocess.CalledProcessError as exc:
             output = "\n".join(
-                part.strip() for part in (exc.stdout, exc.stderr) if part and part.strip()
+                part.strip()
+                for part in (exc.stdout, exc.stderr)
+                if part and part.strip()
             )
             raise RuntimeError(
                 f"pixi verification failed for {self.pixi_exe}.\n"

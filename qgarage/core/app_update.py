@@ -266,9 +266,12 @@ def _resolve_remote_snapshot(
     extract_dir = temp_dir / "extracted"
 
     try:
-        with _open_remote_zip(
-            source.locator, timeout=REMOTE_ZIP_TIMEOUT_SECONDS
-        ) as response, open(zip_path, "wb") as f:
+        with (
+            _open_remote_zip(
+                source.locator, timeout=REMOTE_ZIP_TIMEOUT_SECONDS
+            ) as response,
+            open(zip_path, "wb") as f,
+        ):
             shutil.copyfileobj(response, f)
 
         if not zipfile.is_zipfile(zip_path):

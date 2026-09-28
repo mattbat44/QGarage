@@ -592,7 +592,8 @@ class DashboardDock(QgsDockWidget):
         for app_id, card in self._cards.items():
             entry = self._registry.entries.get(app_id)
             card.setVisible(
-                entry is not None and self._entry_matches(entry.app_meta, normalized_query)
+                entry is not None
+                and self._entry_matches(entry.app_meta, normalized_query)
             )
         for toolbox_id, toolbox_card in self._toolbox_cards.items():
             toolbox_entry = self._registry.toolbox_entries.get(toolbox_id)
