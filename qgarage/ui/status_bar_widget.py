@@ -18,10 +18,9 @@ from qgis.PyQt.QtWidgets import (
 
 logger = logging.getLogger("qgarage.status_bar")
 
-# Blue used for "connected" glow
-_COLOR_CONNECTED = "#2196F3"
-# Muted grey used for "not found"
-_COLOR_DISCONNECTED = "#888888"
+# Green = connected, black = not yet verified
+_COLOR_CONNECTED = "#8DAD25"
+_COLOR_DISCONNECTED = "#000000"
 
 
 class _ToolIndicator(QWidget):
@@ -75,8 +74,8 @@ class _ToolIndicator(QWidget):
     def _apply_style(self) -> None:
         color = _COLOR_CONNECTED if self._connected else _COLOR_DISCONNECTED
 
-        bolt_qss = f"color: {color}; font-size: 11px;"
-        name_qss = f"color: {color}; font-size: 10px;"
+        bolt_qss = f"color: {color}; font-size: 14px;"
+        name_qss = f'color: #000000; font-size: 11px; font-family: "JetBrains Mono", monospace;'
 
         if self._connected:
             tip = f"{self._tool_name} is connected"
@@ -122,7 +121,8 @@ class StatusBarWidget(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("qgarageStatusBar")
-        self.setFixedHeight(22)
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setFixedHeight(26)
         self._build_ui()
 
     # ------------------------------------------------------------------

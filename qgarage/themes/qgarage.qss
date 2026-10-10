@@ -1,0 +1,337 @@
+/* QGarage theme - single palette: #FFFFFF #EAEAEA #8DAD25 #000000 */
+
+* {
+    font-family: "Jersey 15", sans-serif;
+    color: #000000;
+}
+
+#qgarageDashboard,
+#qgarageRoot,
+#qgarageCardContainer,
+#qgarageToolbar,
+#appHost,
+#qgarageCardArea {
+    background-color: #EAEAEA;
+    border: 0;
+}
+
+QScrollArea {
+    background: transparent;
+    border: 0;
+}
+
+QScrollArea > QWidget > QWidget {
+    background: transparent;
+}
+
+#qgarageBrandLogo {
+    background: transparent;
+    border: 0;
+}
+
+/* Pill buttons */
+#qgarageInstallButton,
+#qgarageMarketplaceButton,
+#qgarageNewAppButton,
+#qgarageSettingsButton,
+#qgarageReloadButton,
+#qgarageBackButton,
+QPushButton {
+    background: #FFFFFF;
+    color: #000000;
+    border: 2px solid #000000;
+    border-radius: 17px;
+    padding: 4px 18px;
+    font-size: 20px;
+    min-height: 26px;
+}
+
+#qgarageInstallButton:hover,
+#qgarageMarketplaceButton:hover,
+#qgarageNewAppButton:hover,
+#qgarageSettingsButton:hover,
+#qgarageReloadButton:hover,
+#qgarageBackButton:hover,
+QPushButton:hover {
+    border-color: #8DAD25;
+}
+
+QPushButton:pressed {
+    background: #8DAD25;
+}
+
+QPushButton:disabled {
+    color: #8a8a8a;
+    border-color: #8a8a8a;
+}
+
+#qgarageReloadButton {
+    padding: 0;
+    font-size: 22px;
+}
+
+/* Search + inputs: secondary (mono) font */
+#qgarageSearchBar,
+QLineEdit,
+QTextEdit,
+QPlainTextEdit,
+QComboBox,
+QSpinBox,
+QDoubleSpinBox {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    background: #FFFFFF;
+    color: #000000;
+    border: 2px solid #000000;
+    border-radius: 12px;
+    padding: 4px 10px;
+    selection-background-color: #8DAD25;
+    selection-color: #000000;
+}
+
+#qgarageSearchBar {
+    border-radius: 17px;
+    min-height: 26px;
+}
+
+QLineEdit:focus,
+QTextEdit:focus,
+QComboBox:focus,
+QSpinBox:focus,
+QDoubleSpinBox:focus {
+    border-color: #8DAD25;
+}
+
+/* App host: parameters use the mono font */
+#appHostScroll QLabel,
+#appHostScroll QCheckBox,
+#appHostScroll QGroupBox,
+#appHostScroll QRadioButton,
+#appHostScroll QComboBox,
+#appHostScroll QLineEdit,
+#appDescription,
+#appOutputArea {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+}
+
+/* All titles use the primary font */
+#appHostScroll #appHeader,
+#appHeader,
+#appCardTitle,
+#toolboxCardTitle,
+QGroupBox::title {
+    font-family: "Jersey 15", sans-serif;
+}
+
+#appHostScroll #appHeader,
+#appHeader {
+    font-size: 30px;
+}
+
+#appRunButton {
+    font-size: 22px;
+    border-radius: 18px;
+    padding: 6px 24px;
+}
+
+#appOutputArea {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 12px;
+    padding: 8px;
+}
+
+/* Cards */
+#appCardTitle,
+#toolboxCardTitle {
+    font-size: 24px;
+    background: transparent;
+}
+
+#appCardMeta,
+#appCardBackend,
+#appCardActionCaption {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 9px;
+    background: transparent;
+}
+
+#appCardDescription,
+#toolboxCardDescription {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    background: transparent;
+}
+
+#toolboxCountNumber {
+    font-size: 24px;
+    background: transparent;
+}
+
+#appIconBox {
+    background: #FFFFFF;
+    border: 2px solid #8DAD25;
+    border-radius: 8px;
+}
+
+#appCardRunButton,
+#appCardUpdateButton,
+QToolButton#toolboxExpandButton {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+#appCardResetButton {
+    font-size: 16px;
+    padding: 2px 12px;
+}
+
+#appStateBadge {
+    font-family: "JetBrains Mono", monospace;
+    background: #8DAD25;
+    color: #000000;
+    border: 1px solid #000000;
+    border-radius: 8px;
+    padding: 0 6px;
+    font-size: 9px;
+}
+
+/* Misc */
+QProgressBar {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 8px;
+    text-align: center;
+    font-size: 12px;
+}
+
+QProgressBar::chunk {
+    background: #8DAD25;
+    border-radius: 6px;
+}
+
+QGroupBox {
+    border: 2px solid #000000;
+    border-radius: 12px;
+    margin-top: 10px;
+    padding-top: 8px;
+    background: #FFFFFF;
+}
+
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 6px;
+}
+
+QToolButton {
+    border: 0;
+    background: transparent;
+}
+
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    border: none;
+}
+
+QScrollBar::handle:vertical {
+    background: #000000;
+    border-radius: 5px;
+    min-height: 40px;
+}
+
+QScrollBar::add-line:vertical,
+QScrollBar::sub-line:vertical {
+    height: 0px;
+}
+
+#qgarageStatusBar {
+    background: #FFFFFF;
+    border-top: 2px solid #000000;
+}
+
+#qgarageStatusBar QLabel {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 10px;
+}
+
+#qgarageToolInstallPrompt {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 16px;
+}
+
+/* Dialogs */
+#qgarageDialog {
+    background-color: #EAEAEA;
+}
+
+#dialogPanel,
+#marketplacePanel {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 18px;
+}
+
+#dialogPanel QLabel,
+#marketplacePanel QLabel {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    background: transparent;
+}
+
+#qgarageDialog #dialogTitle,
+#marketplaceTitle {
+    font-family: "Jersey 15", sans-serif;
+    font-size: 30px;
+    background: transparent;
+}
+
+#marketplacePanel #sectionTitle,
+#sectionTitle {
+    font-family: "Jersey 15", sans-serif;
+    font-size: 22px;
+    background: transparent;
+}
+
+/* Marketplace */
+#marketplaceStatus {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    background: transparent;
+}
+
+#marketplaceRescanPrompt {
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 14px;
+}
+
+#marketplaceRescanPrompt QLabel {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 11px;
+    background: transparent;
+}
+
+QListWidget {
+    font-family: "JetBrains Mono", monospace;
+    font-size: 12px;
+    background: #FFFFFF;
+    border: 2px solid #000000;
+    border-radius: 12px;
+    padding: 4px;
+}
+
+QListWidget::item:selected {
+    background: #8DAD25;
+    color: #000000;
+}
+
+#qgarageVersionLabel {
+    font-family: "Jersey 15", sans-serif;
+    font-size: 14px;
+    background: transparent;
+}

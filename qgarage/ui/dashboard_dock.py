@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from qgis.gui import QgisInterface, QgsDockWidget
-from qgis.PyQt.QtCore import QEasingCurve, QPropertyAnimation, Qt, QTimer, pyqtSignal
+from qgis.PyQt.QtCore import (
+    QEasingCurve,
+    QPropertyAnimation,
+    QSize,
+    Qt,
+    QTimer,
+    pyqtSignal,
+)
 from qgis.PyQt.QtWidgets import (
     QFrame,
     QGraphicsOpacityEffect,
@@ -22,6 +30,7 @@ from qgis.PyQt.QtWidgets import (
 from ..core.app_registry import AppEntry, AppRegistry
 from ..core.constants import PIXI_TOML_FILENAME
 from ..core.search import fuzzy_matches
+from ..themes import assets
 from ..themes.theme_manager import ThemeManager
 from .app_card_widget import AppCardWidget
 from .app_host_widget import AppHostWidget
@@ -30,6 +39,19 @@ from .status_bar_widget import StatusBarWidget
 from .toolbox_card_widget import ToolboxCardWidget
 
 logger = logging.getLogger("qgarage.dashboard")
+
+
+def _plugin_version() -> str:
+    """Read the plugin version from metadata.txt (empty string if unavailable)."""
+    try:
+        metadata = Path(__file__).resolve().parent.parent / "metadata.txt"
+        for line in metadata.read_text(encoding="utf-8").splitlines():
+            key, _, value = line.partition("=")
+            if key.strip() == "version":
+                return value.strip()
+    except OSError:
+        pass
+    return ""
 
 
 class DashboardDock(QgsDockWidget):
@@ -102,60 +124,80 @@ class DashboardDock(QgsDockWidget):
 
     def _build_ui(self):
         container = QWidget()
+        container.setObjectName("qgarageRoot")
         main_layout = QVBoxLayout(container)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
 
-        # --- Toolbar ---
+        # --- Bottom bar: actions, then logo + search ---
         self._toolbar = QWidget()
         self._toolbar.setObjectName("qgarageToolbar")
-        toolbar_layout = QHBoxLayout(self._toolbar)
-        toolbar_layout.setContentsMargins(8, 8, 8, 8)
-        toolbar_layout.setSpacing(6)
+        bar_layout = QVBoxLayout(self._toolbar)
+        bar_layout.setContentsMargins(14, 8, 14, 10)
+        bar_layout.setSpacing(8)
+        toolbar_layout = QHBoxLayout()
+        toolbar_layout.setSpacing(8)
+        bar_layout.addLayout(toolbar_layout)
 
-        self.install_button = QPushButton("+  Install")
+        self.install_button = QPushButton("install app")
         self.install_button.setObjectName("qgarageInstallButton")
         self.install_button.setToolTip("Install an app from a URL or local folder")
         self.install_button.clicked.connect(self.install_requested.emit)
         toolbar_layout.addWidget(self.install_button)
 
-        self.marketplace_button = QPushButton("Marketplace")
+        self.marketplace_button = QPushButton("marketplace")
         self.marketplace_button.setObjectName("qgarageMarketplaceButton")
-        self.marketplace_button.setIcon(
-            self.style().standardIcon(QStyle.StandardPixmap.SP_DirOpenIcon)
-        )
         self.marketplace_button.setToolTip(
             "Browse apps and toolboxes from local directories before installing"
         )
         self.marketplace_button.clicked.connect(self._show_marketplace)
         toolbar_layout.addWidget(self.marketplace_button)
 
-        self.new_app_button = QPushButton("New App")
+        self.new_app_button = QPushButton("new app")
         self.new_app_button.setObjectName("qgarageNewAppButton")
         self.new_app_button.setToolTip("Generate a new app from template")
         self.new_app_button.clicked.connect(self.new_app_requested.emit)
         toolbar_layout.addWidget(self.new_app_button)
 
-        self._app_search = QLineEdit()
-        self._app_search.setObjectName("qgarageSearchBar")
-        self._app_search.setPlaceholderText("Search apps")
-        self._app_search.setMaximumWidth(180)
-        self._app_search.textChanged.connect(self._queue_card_filter)
-        toolbar_layout.addWidget(self._app_search)
-
         toolbar_layout.addStretch()
 
-        self.reload_button = QPushButton("↺")
-        self.reload_button.setObjectName("qgarageReloadButton")
-        self.reload_button.setToolTip(
-            "Reload QGarage — equivalent to the Plugin Reloader.\n"
-            "Re-imports all modules, rediscovers apps, and resets all state."
+        search_row = QHBoxLayout()
+        search_row.setSpacing(4)
+        self._brand_logo = QLabel()
+        self._brand_logo.setObjectName("qgarageBrandLogo")
+        logo_pixmap = assets.pixmap("qgarage_logo", QSize(190, 31))
+        if logo_pixmap is not None:
+            self._brand_logo.setPixmap(logo_pixmap)
+        else:
+            self._brand_logo.setText("QGARAGE")
+        search_row.addWidget(
+            self._brand_logo, 0, Qt.AlignmentFlag.AlignVCenter
         )
-        self.reload_button.setFixedWidth(28)
-        self.reload_button.clicked.connect(self.global_refresh_requested.emit)
-        toolbar_layout.addWidget(self.reload_button)
 
-        main_layout.addWidget(self._toolbar)
+        version = _plugin_version()
+        self._version_label = QLabel(f"v{version}" if version else "")
+        self._version_label.setObjectName("qgarageVersionLabel")
+        self._version_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
+        )
+        self._version_label.setVisible(bool(version))
+        search_row.addWidget(
+            self._version_label, 0, Qt.AlignmentFlag.AlignVCenter
+        )
+        search_row.addSpacing(6)
+
+        self._app_search = QLineEdit()
+        self._app_search.setObjectName("qgarageSearchBar")
+        self._app_search.setPlaceholderText("search your tools here...")
+        self._app_search.setMinimumHeight(34)
+        search_icon = assets.icon("search", 20)
+        if not search_icon.isNull():
+            self._app_search.addAction(
+                search_icon, QLineEdit.ActionPosition.LeadingPosition
+            )
+        self._app_search.textChanged.connect(self._queue_card_filter)
+        search_row.addWidget(self._app_search, stretch=1)
+        bar_layout.addLayout(search_row)
 
         # --- Stacked widget: cards view + app host view ---
         self._stack = QStackedWidget()
@@ -173,9 +215,10 @@ class DashboardDock(QgsDockWidget):
         )
 
         self.card_container = QWidget()
+        self.card_container.setObjectName("qgarageCardContainer")
         self.card_layout = QVBoxLayout(self.card_container)
         self.card_layout.setContentsMargins(8, 8, 8, 8)
-        self.card_layout.setSpacing(8)
+        self.card_layout.setSpacing(0)
 
         self._tool_install_prompt = QFrame()
         self._tool_install_prompt.setObjectName("qgarageToolInstallPrompt")
@@ -227,6 +270,7 @@ class DashboardDock(QgsDockWidget):
         self._stack.addWidget(self._marketplace)
 
         main_layout.addWidget(self._stack, stretch=1)
+        main_layout.addWidget(self._toolbar)
 
         # --- Bottom status bar: uv / pixi indicators ---
         self.status_bar = StatusBarWidget()
@@ -386,6 +430,7 @@ class DashboardDock(QgsDockWidget):
 
     def _show_marketplace(self) -> None:
         self._refresh_marketplace_install_status()
+        self._toolbar.setVisible(False)
         self._switch_page(self._marketplace)
 
     def _refresh_marketplace_install_status(self) -> None:
@@ -430,20 +475,20 @@ class DashboardDock(QgsDockWidget):
 
         current_effect = QGraphicsOpacityEffect(current_page)
         fade_out = QPropertyAnimation(current_effect, b"opacity")
-        fade_out.setDuration(90)
+        fade_out.setDuration(60)
         fade_out.setStartValue(1.0)
-        fade_out.setEndValue(0.0)
-        fade_out.setEasingCurve(QEasingCurve.Type.OutCubic)
+        fade_out.setEndValue(0.6)
+        fade_out.setEasingCurve(QEasingCurve.Type.OutQuad)
 
         def show_destination() -> None:
             current_page.setGraphicsEffect(None)
             self._stack.setCurrentWidget(page)
             destination_effect = QGraphicsOpacityEffect(page)
             fade_in = QPropertyAnimation(destination_effect, b"opacity")
-            fade_in.setDuration(140)
-            fade_in.setStartValue(0.0)
+            fade_in.setDuration(100)
+            fade_in.setStartValue(0.6)
             fade_in.setEndValue(1.0)
-            fade_in.setEasingCurve(QEasingCurve.Type.InOutCubic)
+            fade_in.setEasingCurve(QEasingCurve.Type.OutQuad)
             fade_in.finished.connect(lambda: page.setGraphicsEffect(None))
             self._page_transition = fade_in
             fade_in.start()
@@ -457,8 +502,8 @@ class DashboardDock(QgsDockWidget):
         """Apply a short fade-in after a card surface changes."""
         effect = QGraphicsOpacityEffect(widget)
         animation = QPropertyAnimation(effect, b"opacity")
-        animation.setDuration(120)
-        animation.setStartValue(0.35)
+        animation.setDuration(90)
+        animation.setStartValue(0.8)
         animation.setEndValue(1.0)
         animation.setEasingCurve(QEasingCurve.Type.OutCubic)
         animation.finished.connect(lambda: widget.setGraphicsEffect(None))
@@ -591,11 +636,16 @@ class DashboardDock(QgsDockWidget):
                 toolbox_card.setVisible(False)
                 continue
             matches = self._entry_matches(toolbox_entry.toolbox_meta, normalized_query)
-            matches = matches or any(
-                self._entry_matches(entry.app_meta, normalized_query)
-                for entry in toolbox_entry.app_entries.values()
-            )
-            toolbox_card.setVisible(matches)
+            matching_apps = {
+                app_id
+                for app_id, entry in toolbox_entry.app_entries.items()
+                if self._entry_matches(entry.app_meta, normalized_query)
+            }
+            if normalized_query:
+                toolbox_card.set_search_matches(matching_apps)
+            else:
+                toolbox_card.set_search_matches(None)
+            toolbox_card.setVisible(matches or bool(matching_apps))
 
     def _queue_card_filter(self, _query: str) -> None:
         self._app_search_timer.start()
