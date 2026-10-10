@@ -28,7 +28,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.app_registry import AppEntry, AppRegistry
-from ..core.constants import PIXI_TOML_FILENAME
+from ..core.env_bridge import resolve_backend_for_app
 from ..core.search import fuzzy_matches
 from ..themes import assets
 from ..themes.theme_manager import ThemeManager
@@ -450,7 +450,7 @@ class DashboardDock(QgsDockWidget):
         if self._registry is None:
             return
         for app_id, entry in self._registry.entries.items():
-            backend = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+            backend = resolve_backend_for_app(entry.app_dir)
             if backend not in self._checked_backends:
                 continue
             card = self._cards.get(app_id)

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from .base_app import BaseApp
 
 from .app_state import AppHealth, AppState
-from .env_bridge import resolve_bridge_for_app
+from .env_bridge import resolve_bridge_for_app, resolve_env_dir_for_app
 from .uv_bridge import SysPathContext, UvBridge
 
 logger = logging.getLogger("qgarage.app_loader")
@@ -67,7 +67,8 @@ class AppLoader:
 
         try:
             bridge = resolve_bridge_for_app(app_dir, self.pixi_bridge, self.uv_bridge)
-            site_packages = bridge.get_site_packages(app_dir)
+            env_dir = resolve_env_dir_for_app(app_dir)
+            site_packages = bridge.get_site_packages(env_dir)
 
             with SysPathContext(site_packages):
                 _alias_active_qgarage_package()

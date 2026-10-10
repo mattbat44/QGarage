@@ -9,7 +9,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from qgarage.core.env_bridge import resolve_bridge_for_app
+from qgarage.core.env_bridge import (
+    resolve_backend_for_app,
+    resolve_bridge_for_app,
+    resolve_env_dir_for_app,
+)
 
 # ---------------------------------------------------------------------------
 # resolve_bridge_for_app
@@ -76,6 +80,46 @@ class TestResolveBridgeForApp:
         (tmp_path / "pixi.toml").write_text("[project]\nname = 'x'\n", encoding="utf-8")
         with pytest.raises(RuntimeError, match="No environment backend available"):
             resolve_bridge_for_app(tmp_path, None, None)
+
+
+class TestResolveEnvDirAndBackend:
+    def test_prefers_app_local_env_over_toolbox(self, tmp_path):
+        toolbox = tmp_path / "demo_toolbox"
+        toolbox.mkdir()
+        (toolbox / "toolbox_meta.json").write_text(
+            '{"id":"demo_toolbox","name":"Demo"}', encoding="utf-8"
+        )
+        (toolbox / "pixi.toml").write_text("[project]\nname='tb'\n", encoding="utf-8")
+
+        app_dir = toolbox / "special_app"
+        app_dir.mkdir()
+        (app_dir / "requirements.txt").write_text("requests\n", encoding="utf-8")
+
+        assert resolve_env_dir_for_app(app_dir) == app_dir
+        assert resolve_backend_for_app(app_dir) == "uv"
+
+    def test_falls_back_to_toolbox_shared_env(self, tmp_path):
+        toolbox = tmp_path / "shared_toolbox"
+        toolbox.mkdir()
+        (toolbox / "toolbox_meta.json").write_text(
+            '{"id":"shared_toolbox","name":"Shared"}', encoding="utf-8"
+        )
+        (toolbox / "pixi.toml").write_text(
+            "[project]\nname='shared'\n", encoding="utf-8"
+        )
+
+        app_dir = toolbox / "child_app"
+        app_dir.mkdir()
+
+        assert resolve_env_dir_for_app(app_dir) == toolbox
+        assert resolve_backend_for_app(app_dir) == "pixi"
+
+    def test_defaults_to_app_dir_when_no_configs_exist(self, tmp_path):
+        app_dir = tmp_path / "plain_app"
+        app_dir.mkdir()
+
+        assert resolve_env_dir_for_app(app_dir) == app_dir
+        assert resolve_backend_for_app(app_dir) == "uv"
 
 
 # ---------------------------------------------------------------------------

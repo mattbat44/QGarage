@@ -16,7 +16,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.app_state import AppHealth, AppState
-from ..core.constants import PIXI_TOML_FILENAME
+from ..core.env_bridge import resolve_backend_for_app
 from ..themes import assets
 from .pill_frame import CircleButton, PillFrame, pill_margins
 
@@ -85,9 +85,9 @@ class AppCardWidget(PillFrame):
     # ------------------------------------------------------------------
 
     def _backend_name(self) -> str:
-        if self._app_dir is not None and (self._app_dir / PIXI_TOML_FILENAME).exists():
-            return "pixi"
-        return "uv"
+        if self._app_dir is None:
+            return "uv"
+        return resolve_backend_for_app(self._app_dir)
 
     def _build_ui(self):
         layout = QHBoxLayout(self)

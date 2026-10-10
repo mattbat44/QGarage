@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 from .app_loader import AppLoader
 from .app_state import AppHealth
 from .constants import APP_META_FILENAME, DEFAULT_ENCODING, TOOLBOX_META_FILENAME
-from .env_bridge import EnvBridge, resolve_bridge_for_app
+from .env_bridge import EnvBridge, resolve_bridge_for_app, resolve_env_dir_for_app
 from .logger import log_error, log_info, log_warning
 from .uv_bridge import UvBridge
 
@@ -74,6 +74,10 @@ class AppRegistry:
     def get_bridge_for_app(self, app_dir: Path) -> EnvBridge:
         """Return the appropriate environment bridge for an app directory."""
         return resolve_bridge_for_app(app_dir, self.pixi_bridge, self.uv_bridge)
+
+    def get_env_dir_for_app(self, app_dir: Path) -> Path:
+        """Return the directory that owns the effective environment for an app."""
+        return resolve_env_dir_for_app(app_dir)
 
     @property
     def entries(self) -> MappingProxyType[str, AppEntry]:

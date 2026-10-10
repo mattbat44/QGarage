@@ -390,6 +390,7 @@ class UvBridge:
         requirements_path: Optional[Path] = None,
         venv_site_packages: Optional[str] = None,
         show_window: bool = True,
+        manifest_path: Optional[Path] = None,
     ) -> subprocess.Popen:
         """Run an app's execute_logic using the app's persistent venv.
 
@@ -412,12 +413,13 @@ class UvBridge:
 
         config = json.loads(config_path.read_text(encoding="utf-8"))
         app_dir = Path(config["app_dir"])
+        env_dir = requirements_path.parent if requirements_path is not None else app_dir
 
         # Ensure the persistent venv exists and has all requirements installed
-        self.ensure_env(app_dir)
+        self.ensure_env(env_dir)
 
         # Use the venv's python executable
-        python_exe = self._python_exe(app_dir / VENV_DIR)
+        python_exe = self._python_exe(env_dir / VENV_DIR)
 
         cmd = [str(python_exe), str(runner_path), str(config_path)]
 

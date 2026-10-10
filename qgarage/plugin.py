@@ -19,7 +19,7 @@ from .core.app_update import (
     record_update_check,
     should_check_for_updates,
 )
-from .core.constants import PIXI_TOML_FILENAME
+from .core.env_bridge import resolve_backend_for_app
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
 from .core.toolbox_membership import reconcile_installed_apps
@@ -367,7 +367,7 @@ class QGaragePlugin:
 
         worker = EnvSetupWorker(
             entry.app_id,
-            entry.app_dir,
+            self.registry.get_env_dir_for_app(entry.app_dir),
             bridge,
             parent=self.dock,
             clean=clean,
@@ -386,7 +386,7 @@ class QGaragePlugin:
             return
 
         self._pending_app_open_id = app_id
-        tool = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+        tool = resolve_backend_for_app(entry.app_dir)
         available = self._ensure_tool_bridge(tool)
         if available is None:
             return
@@ -490,9 +490,7 @@ class QGaragePlugin:
                 else None
             )
             required_tool = (
-                "pixi"
-                if entry is not None and (entry.app_dir / PIXI_TOML_FILENAME).exists()
-                else "uv"
+                resolve_backend_for_app(entry.app_dir) if entry is not None else "uv"
             )
             if required_tool == tool:
                 self._prompt_tool_install(tool)
@@ -507,7 +505,8 @@ class QGaragePlugin:
             if bridge is not None:
                 continue
             if any(
-                (entry.app_dir / PIXI_TOML_FILENAME).exists() == (tool == "pixi")
+                (resolve_backend_for_app(entry.app_dir) == "pixi")
+                == (tool == "pixi")
                 for entry in self.registry.iter_entries()
             ):
                 self._prompt_tool_install(tool)
@@ -532,9 +531,7 @@ class QGaragePlugin:
         if self.registry is None or self.dock is None:
             return
         for entry in self.registry.iter_entries():
-            required_tool = (
-                "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
-            )
+            required_tool = resolve_backend_for_app(entry.app_dir)
             if required_tool != tool or entry.instance is not None:
                 continue
             error_text = entry.health.last_error or ""
@@ -840,7 +837,7 @@ class QGaragePlugin:
             self._pending_app_open_id = None
             return
         required_tool = (
-            "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
+            resolve_backend_for_app(entry.app_dir)
         )
         if required_tool != tool:
             return
