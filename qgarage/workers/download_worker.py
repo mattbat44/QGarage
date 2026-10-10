@@ -20,6 +20,11 @@ from qgis.PyQt.QtCore import QThread, pyqtSignal
 
 from ..core.app_update import stamp_install_source
 from ..core.fs_utils import remove_tree
+from ..core.toolbox_membership import (
+    ensure_toolbox_shell,
+    find_parent_toolbox_meta,
+    relocate_standalone_conflict,
+)
 
 logger = logging.getLogger("qgarage.download_worker")
 
@@ -211,10 +216,24 @@ class DownloadAndInstallWorker(QThread):
             self.finished.emit(False, "app_meta.json missing 'id' field", False)
             return
 
-        self.progress.emit(60, f"Installing app '{app_id}'...")
+        # If the app sits directly inside a toolbox folder, install it there
+        # instead of as a standalone app.
+        toolbox_meta_file = find_parent_toolbox_meta(app_source_dir)
+        toolbox_id = (
+            ensure_toolbox_shell(self.apps_dir, toolbox_meta_file)
+            if toolbox_meta_file is not None
+            else None
+        )
+
+        self.progress.emit(
+            60,
+            f"Installing '{app_id}' into toolbox '{toolbox_id}'..."
+            if toolbox_id
+            else f"Installing app '{app_id}'...",
+        )
 
         # Phase 4: Copy to apps directory (60-70%)
-        dest_dir = self.apps_dir / app_id
+        dest_dir = self.apps_dir / (toolbox_id or "") / app_id if toolbox_id else self.apps_dir / app_id
         if dest_dir.exists():
             remove_tree(dest_dir)
         shutil.copytree(app_source_dir, dest_dir)
@@ -228,8 +247,11 @@ class DownloadAndInstallWorker(QThread):
         with open(dest_dir / "app_meta.json", "w", encoding="utf-8") as f:
             json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
+        if toolbox_id:
+            relocate_standalone_conflict(self.apps_dir, app_id, dest_dir)
+
         self.progress.emit(100, "Installation complete!")
-        self.finished.emit(True, app_id, False)
+        self.finished.emit(True, toolbox_id or app_id, bool(toolbox_id))
 
     def _install_toolbox(self, toolbox_meta_path: Path, extract_dir: Path):
         """Install a toolbox with multiple apps from extracted directory."""
@@ -349,10 +371,24 @@ class LocalInstallWorker(QThread):
             self.finished.emit(False, "app_meta.json missing 'id' field", False)
             return
 
-        self.progress.emit(30, f"Copying app '{app_id}'...")
+        # If the selected folder sits directly inside a toolbox folder, install
+        # the app there instead of as a standalone app.
+        toolbox_meta_file = find_parent_toolbox_meta(self.source_dir)
+        toolbox_id = (
+            ensure_toolbox_shell(self.apps_dir, toolbox_meta_file)
+            if toolbox_meta_file is not None
+            else None
+        )
+
+        self.progress.emit(
+            30,
+            f"Copying '{app_id}' into toolbox '{toolbox_id}'..."
+            if toolbox_id
+            else f"Copying app '{app_id}'...",
+        )
 
         # Copy to apps directory
-        dest_dir = self.apps_dir / app_id
+        dest_dir = self.apps_dir / toolbox_id / app_id if toolbox_id else self.apps_dir / app_id
         if dest_dir.exists():
             remove_tree(dest_dir)
         shutil.copytree(self.source_dir, dest_dir)
@@ -365,8 +401,11 @@ class LocalInstallWorker(QThread):
         with open(dest_dir / "app_meta.json", "w", encoding="utf-8") as f:
             json.dump(app_meta, f, ensure_ascii=False, indent=2)
 
+        if toolbox_id:
+            relocate_standalone_conflict(self.apps_dir, app_id, dest_dir)
+
         self.progress.emit(100, "Installation complete!")
-        self.finished.emit(True, app_id, False)
+        self.finished.emit(True, toolbox_id or app_id, bool(toolbox_id))
 
     def _install_toolbox(self, toolbox_meta_file: Path):
         """Install a toolbox from local directory."""

@@ -28,6 +28,8 @@ from ..core.search import fuzzy_matches
 from ..workers.download_worker import LocalInstallWorker
 from ..workers.marketplace_scan_worker import MarketplaceScanWorker
 from .app_card_widget import AppCardWidget
+from ..themes import assets
+from .pill_frame import CircleButton, apply_soft_shadow
 from .toolbox_card_widget import ToolboxCardWidget
 
 
@@ -82,43 +84,61 @@ class MarketplacePane(QWidget):
 
     def _build_ui(self) -> None:
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 8, 8, 8)
-        layout.setSpacing(8)
+        layout.setContentsMargins(14, 12, 14, 12)
+        layout.setSpacing(10)
 
         header = QHBoxLayout()
-        back_button = QToolButton()
-        back_button.setArrowType(Qt.ArrowType.LeftArrow)
-        back_button.setAutoRaise(True)
+        header.setSpacing(12)
+        back_button = CircleButton(40)
+        back_button.setObjectName("marketplaceBackButton")
+        back_button.setIcon(assets.icon("arrow_back", 40))
         back_button.setToolTip("Back to installed apps")
         back_button.clicked.connect(self.back_requested.emit)
         header.addWidget(back_button)
-        header.addWidget(QLabel("Local Plugin Marketplace"))
+        title = QLabel("marketplace")
+        title.setObjectName("marketplaceTitle")
+        header.addWidget(title)
         header.addStretch()
         self._search_input = QLineEdit()
-        self._search_input.setObjectName("qgarageMarketplaceSearchBar")
-        self._search_input.setPlaceholderText("Search marketplace")
-        self._search_input.setMaximumWidth(180)
+        self._search_input.setObjectName("qgarageSearchBar")
+        self._search_input.setPlaceholderText("search marketplace...")
+        self._search_input.setMinimumWidth(180)
+        self._search_input.setMinimumHeight(34)
+        search_icon = assets.icon("search", 20)
+        if not search_icon.isNull():
+            self._search_input.addAction(
+                search_icon, QLineEdit.ActionPosition.LeadingPosition
+            )
         self._search_input.textChanged.connect(self._queue_search_query)
-        header.addWidget(self._search_input)
+        header.addWidget(self._search_input, stretch=1)
         layout.addLayout(header)
 
-        layout.addWidget(QLabel("Folders to scan"))
+        folders_panel = QFrame()
+        folders_panel.setObjectName("marketplacePanel")
+        apply_soft_shadow(folders_panel)
+        panel_layout = QVBoxLayout(folders_panel)
+        panel_layout.setContentsMargins(16, 12, 16, 14)
+        panel_layout.setSpacing(8)
+        section_title = QLabel("folders to scan")
+        section_title.setObjectName("sectionTitle")
+        panel_layout.addWidget(section_title)
         self._directory_list = QListWidget()
         self._directory_list.setMaximumHeight(88)
-        layout.addWidget(self._directory_list)
+        panel_layout.addWidget(self._directory_list)
 
         directory_buttons = QHBoxLayout()
-        self._add_directory_button = QPushButton("Add Directory")
+        self._add_directory_button = QPushButton("add folder")
         self._add_directory_button.clicked.connect(self._add_directory)
         directory_buttons.addWidget(self._add_directory_button)
-        self._remove_directory_button = QPushButton("Remove Selected")
+        self._remove_directory_button = QPushButton("remove")
         self._remove_directory_button.clicked.connect(self._remove_selected_directory)
         directory_buttons.addWidget(self._remove_directory_button)
-        self._scan_button = QPushButton("Scan")
+        self._scan_button = QPushButton("scan")
         self._scan_button.clicked.connect(self._scan)
         directory_buttons.addWidget(self._scan_button)
         directory_buttons.addStretch()
-        layout.addLayout(directory_buttons)
+        panel_layout.addLayout(directory_buttons)
+        layout.addWidget(folders_panel)
 
         self._scan_progress = QProgressBar()
         self._scan_progress.setRange(0, 0)
@@ -132,7 +152,7 @@ class MarketplacePane(QWidget):
         rescan_layout.addWidget(
             QLabel("Cached marketplace listings may be out of date.")
         )
-        self._rescan_button = QPushButton("Rescan")
+        self._rescan_button = QPushButton("rescan")
         self._rescan_button.clicked.connect(self._scan)
         rescan_layout.addWidget(self._rescan_button)
         rescan_layout.addStretch()
@@ -140,14 +160,16 @@ class MarketplacePane(QWidget):
         layout.addWidget(self._rescan_prompt)
 
         self._results_scroll = QScrollArea()
+        self._results_scroll.setObjectName("marketplaceResults")
         self._results_scroll.setWidgetResizable(True)
         self._results_scroll.setHorizontalScrollBarPolicy(
             Qt.ScrollBarPolicy.ScrollBarAlwaysOff
         )
         self._results = QWidget()
+        self._results.setObjectName("marketplaceResultsBody")
         self._results_layout = QVBoxLayout(self._results)
-        self._results_layout.setContentsMargins(0, 0, 0, 0)
-        self._results_layout.setSpacing(8)
+        self._results_layout.setContentsMargins(0, 4, 0, 4)
+        self._results_layout.setSpacing(12)
         self._results_layout.addStretch()
         self._results_scroll.setWidget(self._results)
         layout.addWidget(self._results_scroll, stretch=1)
@@ -155,8 +177,14 @@ class MarketplacePane(QWidget):
         self._status_label = QLabel(
             "Add a folder containing apps or toolboxes, then select Scan."
         )
+        self._status_label.setObjectName("marketplaceStatus")
         self._status_label.setWordWrap(True)
         layout.addWidget(self._status_label)
+
+    def _add_group_label(self, text: str) -> None:
+        label = QLabel(text.lower())
+        label.setObjectName("sectionTitle")
+        self._results_layout.insertWidget(self._results_layout.count() - 1, label)
 
     def _add_directory(self) -> None:
         selected = QFileDialog.getExistingDirectory(

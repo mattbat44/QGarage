@@ -23,6 +23,8 @@ def build_zip(plugin_dir: Path, zip_path: Path) -> None:
                 continue
             if "__pycache__" in file_path.parts or file_path.suffix in {".pyc", ".pyo"}:
                 continue
+            if "designassets" in file_path.relative_to(plugin_dir).parts:
+                continue
             zf.write(file_path, file_path.relative_to(plugin_dir.parent).as_posix())
 
 

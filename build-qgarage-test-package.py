@@ -71,7 +71,12 @@ def update_init_text(raw: str) -> str:
 
 def prepare_test_plugin_tree(build_root: Path) -> Path:
     target_plugin_dir = build_root / TEST_PLUGIN_DIRNAME
-    shutil.copytree(SOURCE_PLUGIN_DIR, target_plugin_dir, dirs_exist_ok=True)
+    shutil.copytree(
+        SOURCE_PLUGIN_DIR,
+        target_plugin_dir,
+        dirs_exist_ok=True,
+        ignore=shutil.ignore_patterns("designassets", "__pycache__"),
+    )
 
     metadata_path = target_plugin_dir / "metadata.txt"
     metadata_path.write_text(

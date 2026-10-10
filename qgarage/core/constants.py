@@ -13,9 +13,7 @@ DEFAULT_CLASS_NAME = "App"
 APP_MODULE_TEMPLATE = "qgarage.apps.{app_id}.main"
 
 # Theme
-DARK_THEME_FILE = "dark.qss"
-LIGHT_THEME_FILE = "light.qss"
-DARK_THEME_LUMINANCE_THRESHOLD = 128
+THEME_FILE = "qgarage.qss"
 
 # Encoding
 DEFAULT_ENCODING = "utf-8"

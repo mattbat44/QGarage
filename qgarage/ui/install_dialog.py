@@ -17,6 +17,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..workers.download_worker import DownloadAndInstallWorker, LocalInstallWorker
+from .pill_frame import build_dialog_shell
 
 logger = logging.getLogger("qgarage.install_dialog")
 
@@ -40,7 +41,7 @@ class InstallDialog(QDialog):
         self._build_ui()
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
+        layout = build_dialog_shell(self, "install app")
         layout.setSpacing(10)
 
         # URL input
@@ -56,7 +57,7 @@ class InstallDialog(QDialog):
         layout.addLayout(url_row)
 
         # Separator
-        layout.addWidget(QLabel("— or —"))
+        layout.addWidget(QLabel("or"))
 
         # Local folder
         folder_row = QHBoxLayout()
