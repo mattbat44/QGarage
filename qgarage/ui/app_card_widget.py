@@ -177,46 +177,12 @@ class AppCardWidget(PillFrame):
             self._reset_button, alignment=Qt.AlignmentFlag.AlignHCenter
         )
 
-        self._action_caption = QLabel()
-        self._action_caption.setObjectName("appCardActionCaption")
-        self._action_caption.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        action_column.addWidget(self._action_caption)
-        action_column.addStretch()
-        layout.addLayout(action_column)
+        self._update_button = QPushButton("Update")
+        self._update_button.setVisible(False)
+        self._update_button.clicked.connect(lambda: self.update_clicked.emit(self.app_id))
+        btn_layout.addWidget(self._update_button)
 
-    @staticmethod
-    def _make_icon_button(object_name: str) -> QPushButton:
-        button = CircleButton(ACTION_ICON_SIZE + 12)
-        button.setObjectName(object_name)
-        return button
-
-    def _build_icon(self) -> QLabel:
-        """Green-outlined box; filled with the app's icon only when one is provided."""
-        box = QLabel()
-        box.setObjectName("appIconBox")
-        box.setFixedSize(ICON_BOX_SIZE, ICON_BOX_SIZE)
-        box.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        icon_path_value = (self._app_meta.get("icon_path") or "").strip()
-        if icon_path_value and self._app_dir is not None:
-            resolved = self._app_dir / icon_path_value
-            if resolved.is_file():
-                pixmap = QPixmap(str(resolved))
-                if not pixmap.isNull():
-                    inner = ICON_BOX_SIZE - 12
-                    box.setPixmap(
-                        pixmap.scaled(
-                            inner,
-                            inner,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation,
-                        )
-                    )
-        return box
-
-    # ------------------------------------------------------------------
-    # State
-    # ------------------------------------------------------------------
+        layout.addLayout(btn_layout)
 
     def update_state(self):
         """Refresh the badge and state icon to reflect current AppHealth state."""
@@ -359,7 +325,9 @@ class AppCardWidget(PillFrame):
             if self._available_version:
                 update_label = f"Update to {self._available_version}"
             update_action = QAction(update_label, self)
-            update_action.triggered.connect(lambda: self.update_clicked.emit(self.app_id))
+            update_action.triggered.connect(
+                lambda: self.update_clicked.emit(self.app_id)
+            )
             menu.addAction(update_action)
 
         refresh_action = QAction("↺  Refresh App", self)

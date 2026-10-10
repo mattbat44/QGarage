@@ -178,6 +178,7 @@ class MyToolApp(BaseApp):
     def execute_logic(self, inputs: dict) -> dict:
         # Delegate to src/ modules. Keep this function short.
         from src.processing import run_analysis
+
         return run_analysis(inputs, log=self.log)
 ```
 
@@ -193,9 +194,11 @@ def __init__(self, **kwargs):
     super().__init__(**kwargs)
     self.add_input(...)
 
+
 # WRONG — missing **kwargs
 def __init__(self):
     super().__init__()  # app_meta and app_dir never set → crash
+
 
 # WRONG — super() not called first
 def __init__(self, **kwargs):
@@ -216,12 +219,15 @@ At load time, QGIS's Python doesn't know about packages in your `.venv`. They ar
 import requests
 from qgarage.core.base_app import BaseApp, InputType
 
+
 class MyApp(BaseApp): ...
+
 
 # CORRECT — import inside execute_logic where the venv is active
 class MyApp(BaseApp):
     def execute_logic(self, inputs):
         import requests  # available because venv is active in the subprocess
+
         ...
 ```
 
@@ -291,35 +297,57 @@ self.add_input(key, label, input_type, **kwargs)
 
 ```python
 # Text input with a default
-self.add_input("api_key", "API Key", InputType.STRING,
-               tooltip="Your service API key", required=True)
+self.add_input(
+    "api_key",
+    "API Key",
+    InputType.STRING,
+    tooltip="Your service API key",
+    required=True,
+)
 
 # Integer with bounds
-self.add_input("zoom", "Zoom Level", InputType.INTEGER,
-               default=12, min_value=0, max_value=22)
+self.add_input(
+    "zoom", "Zoom Level", InputType.INTEGER, default=12, min_value=0, max_value=22
+)
 
 # Dropdown
-self.add_input("format", "Output Format", InputType.CHOICE,
-               choices=["GeoTIFF", "PNG", "JPEG"], default="GeoTIFF")
+self.add_input(
+    "format",
+    "Output Format",
+    InputType.CHOICE,
+    choices=["GeoTIFF", "PNG", "JPEG"],
+    default="GeoTIFF",
+)
 
 # File picker filtered to specific types
-self.add_input("input_file", "Input File", InputType.FILE_PATH,
-               file_filter="GeoTIFF (*.tif *.tiff);;All Files (*.*)")
+self.add_input(
+    "input_file",
+    "Input File",
+    InputType.FILE_PATH,
+    file_filter="GeoTIFF (*.tif *.tiff);;All Files (*.*)",
+)
 
 # Layer input
 self.add_input("boundary", "Boundary Layer", InputType.VECTOR_LAYER)
 
 # Field that auto-populates from the selected layer
-self.add_input("label_field", "Label Field", InputType.FIELD,
-               linked_layer_key="boundary")
+self.add_input(
+    "label_field", "Label Field", InputType.FIELD, linked_layer_key="boundary"
+)
 
 # Grouped inputs (creates QGroupBox sections)
 self.add_input("input_layer", "Input", InputType.VECTOR_LAYER, group="Input")
-self.add_input("filter_field", "Filter Field", InputType.FIELD,
-               linked_layer_key="input_layer", group="Input")
+self.add_input(
+    "filter_field",
+    "Filter Field",
+    InputType.FIELD,
+    linked_layer_key="input_layer",
+    group="Input",
+)
 self.add_input("output_folder", "Output Folder", InputType.FOLDER_PATH, group="Output")
-self.add_input("output_name", "File Name", InputType.STRING,
-               default="result", group="Output")
+self.add_input(
+    "output_name", "File Name", InputType.STRING, default="result", group="Output"
+)
 ```
 
 ---
@@ -333,15 +361,15 @@ When a layer input reaches your `execute_logic`, it is **not** a real QGIS layer
 ```python
 layer = inputs["my_vector_layer"]
 
-layer.name()          # → str: layer display name
-layer.source()        # → str: absolute path to a TEMPORARY GeoJSON export of the layer
+layer.name()  # → str: layer display name
+layer.source()  # → str: absolute path to a TEMPORARY GeoJSON export of the layer
 layer.crs().authid()  # → str: e.g. "EPSG:4326"
-layer.extent().xMinimum()   # → float
-layer.extent().xMaximum()   # → float
-layer.extent().yMinimum()   # → float
-layer.extent().yMaximum()   # → float
+layer.extent().xMinimum()  # → float
+layer.extent().xMaximum()  # → float
+layer.extent().yMinimum()  # → float
+layer.extent().yMaximum()  # → float
 layer.featureCount()  # → int
-layer.isValid()       # → bool
+layer.isValid()  # → bool
 ```
 
 **Important:** `layer.source()` points to a temporary GeoJSON file, not the original data source. Use it as the input to GDAL/OGR/geopandas processing.
@@ -351,10 +379,10 @@ layer.isValid()       # → bool
 ```python
 layer = inputs["my_raster_layer"]
 
-layer.name()          # → str
-layer.source()        # → str: path to the ORIGINAL raster file (no conversion)
+layer.name()  # → str
+layer.source()  # → str: path to the ORIGINAL raster file (no conversion)
 layer.crs().authid()  # → str
-layer.isValid()       # → bool
+layer.isValid()  # → bool
 ```
 
 Raster layers pass their original path through unchanged. You can hand `layer.source()` directly to `gdal.Open()`, `gdal.Warp()`, etc.
@@ -363,8 +391,8 @@ Raster layers pass their original path through unchanged. You can hand `layer.so
 
 ```python
 crs = inputs["my_crs"]
-crs.authid()    # → str: e.g. "EPSG:32632"
-crs.isValid()   # → bool
+crs.authid()  # → str: e.g. "EPSG:32632"
+crs.isValid()  # → bool
 ```
 
 ### Reading Vector Features
@@ -386,7 +414,10 @@ def execute_logic(self, inputs):
         geom = feature["geometry"]
         # process...
 
-    return {"status": "success", "message": f"Processed {len(geojson['features'])} features."}
+    return {
+        "status": "success",
+        "message": f"Processed {len(geojson['features'])} features.",
+    }
 ```
 
 Or with geopandas (add `geopandas` to requirements.txt):
@@ -402,7 +433,11 @@ def execute_logic(self, inputs):
     output_path = inputs["output_folder"] + "/filtered.geojson"
     result.to_file(output_path, driver="GeoJSON")
 
-    return {"status": "success", "message": f"Saved {len(result)} features.", "output_path": output_path}
+    return {
+        "status": "success",
+        "message": f"Saved {len(result)} features.",
+        "output_path": output_path,
+    }
 ```
 
 ---
@@ -423,6 +458,7 @@ def execute_logic(self, inputs):
 
     # This is intercepted and replayed on the QGIS main thread:
     from qgis.core import QgsProject, QgsRasterLayer
+
     QgsProject.instance().addMapLayer(QgsRasterLayer(output_path, "Result"))
 
     return {"status": "success", "message": f"Saved to {output_path}"}
@@ -442,6 +478,7 @@ def execute_logic(self, inputs):
         "layer_name": "My Result",
     }
 
+
 def on_finalize(self, result: dict) -> None:
     if result.get("status") == "success" and result.get("output_path"):
         self.add_output_layer(
@@ -454,8 +491,8 @@ def on_finalize(self, result: dict) -> None:
 
 ```python
 self.add_output_layer(
-    source,          # str or Path — file path or data source URI
-    name=None,       # str — display name (defaults to file stem)
+    source,  # str or Path — file path or data source URI
+    name=None,  # str — display name (defaults to file stem)
     provider="ogr",  # str — QGIS provider key
     layer_type="auto",  # "vector", "raster", or "auto"
 )
@@ -482,6 +519,7 @@ def execute_logic(self, inputs):
             {"path": "/tmp/c.geojson", "name": "Contours"},
         ],
     }
+
 
 def on_finalize(self, result: dict) -> None:
     for item in result.get("outputs", []):
@@ -529,7 +567,7 @@ my_tool/
 
 ```python
 # Inside execute_logic:
-from src.logic import do_the_thing   # works because app_dir is on sys.path
+from src.logic import do_the_thing  # works because app_dir is on sys.path
 ```
 
 ### Example: Clean main.py
@@ -542,14 +580,24 @@ from qgarage.core.base_app import BaseApp, InputType
 class SlopeCalculatorApp(BaseApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.add_input("dem", "DEM Raster", InputType.RASTER_LAYER,
-                       tooltip="Input digital elevation model")
+        self.add_input(
+            "dem",
+            "DEM Raster",
+            InputType.RASTER_LAYER,
+            tooltip="Input digital elevation model",
+        )
         self.add_input("output_folder", "Output Folder", InputType.FOLDER_PATH)
-        self.add_input("method", "Algorithm", InputType.CHOICE,
-                       choices=["Horn", "ZevenbergenThorne"], default="Horn")
+        self.add_input(
+            "method",
+            "Algorithm",
+            InputType.CHOICE,
+            choices=["Horn", "ZevenbergenThorne"],
+            default="Horn",
+        )
 
     def execute_logic(self, inputs: dict) -> dict:
-        from src.slope import calculate_slope   # import inside execute_logic
+        from src.slope import calculate_slope  # import inside execute_logic
+
         return calculate_slope(
             dem_path=inputs["dem"].source(),
             output_folder=inputs["output_folder"],
@@ -590,7 +638,7 @@ def calculate_slope(
         QGarage result dict with at least {"status": ..., "message": ...}.
     """
     from osgeo import gdal  # uv apps: gdal available from QGIS Python
-                             # pixi apps: must be in pixi.toml [dependencies]
+    # pixi apps: must be in pixi.toml [dependencies]
 
     output_path = os.path.join(output_folder, "slope.tif")
     log(f"Reading DEM: {dem_path}")
@@ -703,7 +751,7 @@ def validate_inputs(self, inputs: dict) -> str | None:
     output = inputs.get("output_folder", "")
     if not output:
         return "Please select an output folder."
-    return None   # allow execution
+    return None  # allow execution
 ```
 
 ### on_finalize(result)
@@ -728,6 +776,7 @@ Called when the app is loaded or unloaded by the registry. Rarely needed.
 def on_load(self) -> None:
     # Called once when QGarage registers this app. Use for one-time setup.
     pass
+
 
 def on_unload(self) -> None:
     # Called when the plugin shuts down or the app is removed.
@@ -770,7 +819,7 @@ def execute_logic(self, inputs: dict) -> dict:
     for i, f in enumerate(files):
         self.log(f"Processing {f} ({i + 1}/{total})")
         # ... process f ...
-        self.set_progress(i + 1, total)   # updates the progress bar
+        self.set_progress(i + 1, total)  # updates the progress bar
 
     return {"status": "success", "message": f"Processed {total} files."}
 ```
@@ -781,6 +830,7 @@ Declarative apps automatically appear in the QGIS Processing Toolbox. To expose 
 
 ```python
 from qgarage.core.base_app import BaseApp, InputType, OutputType
+
 
 class MyApp(BaseApp):
     def __init__(self, **kwargs):
@@ -813,9 +863,7 @@ If you need a multi-step wizard, interactive canvas tool, or live dashboard, ove
 - The app will **not** appear in the Processing Toolbox (dynamic apps are excluded).
 
 ```python
-from qgis.PyQt.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
-)
+from qgis.PyQt.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
 from qgarage.core.base_app import BaseApp
 
 
@@ -839,6 +887,7 @@ class MyInteractiveTool(BaseApp):
     def _analyse(self) -> None:
         # Runs on QGIS main thread — full QGIS API available
         from qgis.core import QgsProject
+
         project = QgsProject.instance()
         layers = project.mapLayers()
         self._output.setText(f"Project has {len(layers)} layer(s).")
@@ -916,7 +965,7 @@ def test_run_analysis_success(tmp_path):
         dem_path="tests/fixtures/sample_dem.tif",
         output_folder=str(tmp_path),
         method="Horn",
-        log=logs.append,   # capture log output without printing
+        log=logs.append,  # capture log output without printing
     )
     assert result["status"] == "success"
     assert Path(result["output_path"]).exists()
@@ -955,16 +1004,27 @@ MINIMAL_META = {
 
 class FakeLayer:
     """Minimal shim matching what the subprocess runner provides."""
+
     def __init__(self, source_path):
         self._source = source_path
 
-    def source(self): return self._source
-    def name(self): return "test_layer"
-    def featureCount(self): return 3
-    def isValid(self): return True
+    def source(self):
+        return self._source
+
+    def name(self):
+        return "test_layer"
+
+    def featureCount(self):
+        return 3
+
+    def isValid(self):
+        return True
+
     def crs(self):
         class FakeCrs:
-            def authid(self): return "EPSG:4326"
+            def authid(self):
+                return "EPSG:4326"
+
         return FakeCrs()
 
 
@@ -1105,7 +1165,10 @@ class DemDownloaderApp(BaseApp):
             log=self.log,
         )
         if raw_path is None:
-            return {"status": "error", "message": "Download failed. Check the console for details."}
+            return {
+                "status": "error",
+                "message": "Download failed. Check the console for details.",
+            }
 
         target_crs = inputs["target_crs"].authid()
         if target_crs != "EPSG:4326":
@@ -1144,6 +1207,7 @@ class DemDownloaderApp(BaseApp):
 
 Pure Python — no QGIS, no Qt. Fully testable in isolation.
 """
+
 from __future__ import annotations
 
 import os
@@ -1164,9 +1228,7 @@ def download_dem(
     Returns the absolute path of the downloaded file, or None on failure.
     """
     xmin, ymin, xmax, ymax = bbox
-    url = (
-        f"https://example.com/dem?bbox={xmin},{ymin},{xmax},{ymax}&crs={source_crs}"
-    )
+    url = f"https://example.com/dem?bbox={xmin},{ymin},{xmax},{ymax}&crs={source_crs}"
 
     output_path = os.path.join(output_folder, f"{name}.tif")
     log(f"Fetching: {url}")
@@ -1193,6 +1255,7 @@ def download_dem(
 
 Pure Python — no QGIS, no Qt. GDAL is available in uv apps for free.
 """
+
 from __future__ import annotations
 
 import os
@@ -1211,7 +1274,9 @@ def reproject_raster(
     """
     from osgeo import gdal
 
-    output_path = str(Path(input_path).with_suffix("")) + f"_{target_crs.replace(':', '_')}.tif"
+    output_path = (
+        str(Path(input_path).with_suffix("")) + f"_{target_crs.replace(':', '_')}.tif"
+    )
     log(f"Reprojecting to {target_crs} → {output_path}")
 
     warp_options = gdal.WarpOptions(dstSRS=target_crs, format="GTiff")

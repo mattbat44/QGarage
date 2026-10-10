@@ -45,6 +45,7 @@ All three live in a single folder: `qgarage/apps/<app_id>/`
 ```python
 from qgarage.core.base_app import BaseApp, InputType
 
+
 class MyFirstToolApp(BaseApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -105,6 +106,7 @@ Your app's logic. Must define a class that inherits from `BaseApp`:
 
 ```python
 from qgarage.core.base_app import BaseApp, InputType
+
 
 class MyToolApp(BaseApp):
     def __init__(self, **kwargs):
@@ -192,10 +194,20 @@ Register a declarative input. The framework auto-generates a Qt widget for it.
 
 ```python
 self.add_input("layer", "Input Vector Layer", InputType.VECTOR_LAYER)
-self.add_input("buffer_distance", "Buffer Distance (m)", InputType.FLOAT, 
-               default=10.0, min_value=0.1, max_value=1000.0)
-self.add_input("output_format", "Output Format", InputType.CHOICE,
-               choices=["GeoJSON", "Shapefile", "GeoPackage"])
+self.add_input(
+    "buffer_distance",
+    "Buffer Distance (m)",
+    InputType.FLOAT,
+    default=10.0,
+    min_value=0.1,
+    max_value=1000.0,
+)
+self.add_input(
+    "output_format",
+    "Output Format",
+    InputType.CHOICE,
+    choices=["GeoJSON", "Shapefile", "GeoPackage"],
+)
 ```
 
 #### InputTypes Reference
@@ -293,16 +305,16 @@ Your main business logic. **This runs in a subprocess.**
 ```python
 def execute_logic(self, inputs):
     # Inputs dict contains resolved values
-    layer = inputs["vector_layer"]      # Shim object
-    text = inputs["text_field"]         # String
-    distance = inputs["distance"]       # Float
-    
+    layer = inputs["vector_layer"]  # Shim object
+    text = inputs["text_field"]  # String
+    distance = inputs["distance"]  # Float
+
     # Log progress (visible in console window)
     self.log(f"Processing layer: {layer.name()}")
-    
+
     # Your logic here (can use standard Python libraries)
     # Can import GDAL, osgeo, numpy, pandas, etc.
-    
+
     # Return result dict
     return {
         "status": "success",  # or "error"
@@ -333,12 +345,14 @@ def execute_logic(self, inputs):
    def execute_logic(self, inputs):
        import requests  # OK - imported here
        import geopandas as gpd  # OK
+
        data = requests.get("...")
    ```
 
 6. **Add layers via `QgsProject.addMapLayer()`** — it's intercepted and replayed on QGIS main thread:
    ```python
    from qgis.core import QgsProject, QgsVectorLayer
+
    layer = QgsVectorLayer(json_path, "Result", "ogr")
    QgsProject.instance().addMapLayer(layer)  # Intercepted and replayed
    ```
@@ -346,6 +360,7 @@ def execute_logic(self, inputs):
 7. **GDAL/osgeo ARE available** because QGIS's Python is used:
    ```python
    from osgeo import gdal
+
    gdal.Warp(output_path, input_path, xRes=10, yRes=10)
    ```
 
@@ -379,7 +394,9 @@ Load a layer into QGIS. Preferred over `addMapLayer()` in `execute_logic()` beca
 ```python
 # Calls from on_finalize (main thread)
 self.add_output_layer("/tmp/result.geojson", "Vector Result")
-self.add_output_layer("/tmp/result.tif", "Raster Result", provider="gdal", layer_type="raster")
+self.add_output_layer(
+    "/tmp/result.tif", "Raster Result", provider="gdal", layer_type="raster"
+)
 self.add_output_layer("/tmp/result.gpkg", "GeoPackage", layer_type="auto")
 ```
 
@@ -409,20 +426,21 @@ Override `build_dynamic_widget()` for custom UI (wizards, interactive tools, cha
 from qgis.PyQt.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTextEdit
 from qgarage.core.base_app import BaseApp
 
+
 class MyDynamicApp(BaseApp):
     def build_dynamic_widget(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
-        
+
         self._output = QTextEdit()
         layout.addWidget(self._output)
-        
+
         btn = QPushButton("Click me")
         btn.clicked.connect(self._on_click)
         layout.addWidget(btn)
-        
+
         return widget
-    
+
     def _on_click(self):
         # Runs on QGIS main thread
         self._output.append("Clicked!")
@@ -453,23 +471,24 @@ class MyDynamicApp(BaseApp):
 def execute_logic(self, inputs):
     import os
     from osgeo import ogr
-    
+
     layer = inputs["input_layer"]
     output_folder = inputs["output_folder"]
-    
+
     # Read GeoJSON
     source = ogr.Open(layer.source())
     self.log(f"Processing {layer.name()} ({layer.featureCount()} features)")
-    
+
     # Process and write result
     output_path = os.path.join(output_folder, f"{layer.name()}_processed.geojson")
     # ... processing logic ...
-    
+
     return {
         "status": "success",
         "message": f"Saved to {output_path}",
         "output_path": output_path,
     }
+
 
 def on_finalize(self, result):
     if result.get("status") == "success":
@@ -539,8 +558,13 @@ def execute_logic(self, inputs):
 
 ```python
 self.add_input("input_layer", "Layer", InputType.VECTOR_LAYER, group="Input")
-self.add_input("filter_field", "Filter Field", InputType.FIELD,
-               linked_layer_key="input_layer", group="Input")
+self.add_input(
+    "filter_field",
+    "Filter Field",
+    InputType.FIELD,
+    linked_layer_key="input_layer",
+    group="Input",
+)
 self.add_input("output_folder", "Output Folder", InputType.FOLDER_PATH, group="Output")
 self.add_input("output_name", "Name", InputType.STRING, group="Output")
 ```
@@ -556,6 +580,7 @@ Layer inputs are matched best-effort by layer ID → name → source. CRS values
 **To clear cache programmatically:**
 ```python
 from qgarage.core.settings import ParameterCache
+
 ParameterCache("my_app_id").clear()
 ```
 
@@ -593,7 +618,7 @@ For code running on the QGIS main thread (dynamic mode, `on_finalize`, `validate
 
 ```python
 from qgis.PyQt.QtWidgets import QWidget, QPushButton  # ✅ CORRECT
-from qgis.PyQt.QtCore import Qt, pyqtSignal           # ✅ CORRECT
+from qgis.PyQt.QtCore import Qt, pyqtSignal  # ✅ CORRECT
 ```
 
 **Never:**
@@ -638,6 +663,7 @@ Folder name = Python identifier (lowercase, underscores).
 
 ```python
 from qgarage.core.base_app import BaseApp, InputType
+
 
 class MyNewToolApp(BaseApp):
     def __init__(self, **kwargs):

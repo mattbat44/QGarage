@@ -141,10 +141,7 @@ QGarage automatically exposes declarative apps (those using `add_input()` + `exe
 import processing
 
 # Run a QGarage app via Processing
-result = processing.run("qgarage:hello_world", {
-    'name': 'Alice',
-    'count': 3
-})
+result = processing.run("qgarage:hello_world", {"name": "Alice", "count": 3})
 
 print(result)
 ```
@@ -179,7 +176,14 @@ class HelloWorldApp(BaseApp):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.add_input("name", "Your Name", InputType.STRING, default="World")
-        self.add_input("count", "Repeat Count", InputType.INTEGER, default=1, min_value=1, max_value=10)
+        self.add_input(
+            "count",
+            "Repeat Count",
+            InputType.INTEGER,
+            default=1,
+            min_value=1,
+            max_value=10,
+        )
 
     def execute_logic(self, inputs):
         name = inputs["name"]
@@ -188,10 +192,7 @@ class HelloWorldApp(BaseApp):
         for i in range(count):
             self.log(f"Hello, {name}! (iteration {i + 1})")
 
-        return {
-            "status": "success",
-            "message": f"Greeted {name} {count} time(s)."
-        }
+        return {"status": "success", "message": f"Greeted {name} {count} time(s)."}
 ```
 
 #### 3. `requirements.txt` (optional)
@@ -265,6 +266,7 @@ class ProcessVectorApp(BaseApp):
 
         # Read GeoJSON from layer.source()
         import json
+
         with open(layer.source()) as f:
             geojson = json.load(f)
 
@@ -283,6 +285,7 @@ def execute_logic(self, inputs):
 
     # Auto-load result to QGIS (on main thread after subprocess completes)
     from qgis.core import QgsProject, QgsRasterLayer
+
     QgsProject.instance().addMapLayer(QgsRasterLayer(output_path, "My Result"))
 
     return {"status": "success", "message": f"Saved and loaded: {output_path}"}
@@ -294,6 +297,7 @@ Or prefer `on_finalize()` for cleaner code:
 def execute_logic(self, inputs):
     # ... processing ...
     return {"status": "success", "output_path": "/tmp/result.tif"}
+
 
 def on_finalize(self, result):
     if result.get("status") == "success":
@@ -331,6 +335,7 @@ For multi-step wizards, interactive tools, or live dashboards:
 from qgis.PyQt.QtWidgets import QWidget, QVBoxLayout, QLabel, QPushButton, QTextEdit
 from qgarage.core.base_app import BaseApp
 
+
 class DynamicApp(BaseApp):
     def build_dynamic_widget(self) -> QWidget:
         widget = QWidget()
@@ -351,6 +356,7 @@ class DynamicApp(BaseApp):
     def _on_run(self):
         # Runs on QGIS main thread — full QGIS API access
         from qgis.core import QgsProject
+
         layer_count = len(QgsProject.instance().mapLayers())
         self._output.setText(f"Project has {layer_count} layers")
 ```
@@ -513,6 +519,7 @@ uv run pytest
 # tests/test_hello_world.py
 from qgarage.apps.hello_world.main import HelloWorldApp
 
+
 def test_hello_world_app():
     app = HelloWorldApp()
     result = app.execute_logic({"name": "Test", "count": 2})
@@ -568,7 +575,9 @@ Group related inputs in a `QGroupBox`:
 
 ```python
 self.add_input("input_layer", "Input", InputType.VECTOR_LAYER, group="Input")
-self.add_input("field", "Field", InputType.FIELD, linked_layer_key="input_layer", group="Input")
+self.add_input(
+    "field", "Field", InputType.FIELD, linked_layer_key="input_layer", group="Input"
+)
 self.add_input("output_path", "Output Path", InputType.FILE_PATH, group="Output")
 ```
 

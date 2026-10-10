@@ -22,7 +22,7 @@ from qgis.PyQt.QtWidgets import (
 
 from ..core.app_registry import AppEntry, ToolboxEntry
 from ..core.app_state import AppHealth
-from ..core.marketplace import MarketplaceItem, scan_marketplace
+from ..core.marketplace import MarketplaceItem
 from ..core.marketplace_cache import MarketplaceCache
 from ..core.search import fuzzy_matches
 from ..workers.download_worker import LocalInstallWorker
@@ -68,14 +68,14 @@ class MarketplacePane(QWidget):
         self._items = snapshot.items
         self._scan_times = snapshot.scanned_at
         self._directory_list.clear()
-        self._directory_list.addItems([str(directory) for directory in self._directories])
+        self._directory_list.addItems(
+            [str(directory) for directory in self._directories]
+        )
         if self._items:
             self._render_items()
             self._status_label.setText("Showing cached marketplace listings.")
 
-    def set_installed_items(
-        self, app_ids: set[str], toolbox_ids: set[str]
-    ) -> None:
+    def set_installed_items(self, app_ids: set[str], toolbox_ids: set[str]) -> None:
         """Update installed status without reading or preparing marketplace items."""
         self._installed_app_ids = set(app_ids)
         self._installed_toolbox_ids = set(toolbox_ids)
@@ -242,9 +242,7 @@ class MarketplacePane(QWidget):
             return
         self._items = items
         scan_time = datetime.now(timezone.utc)
-        self._scan_times = {
-            directory: scan_time for directory in self._directories
-        }
+        self._scan_times = dict.fromkeys(self._directories, scan_time)
         self._stale_prompt_shown = True
         self._rescan_prompt.setVisible(False)
         self._persist_cache()
@@ -262,7 +260,9 @@ class MarketplacePane(QWidget):
         self._scan_button.setEnabled(not scanning)
         self._scan_progress.setVisible(scanning)
         self._rescan_button.setEnabled(not scanning)
-        self._status_label.setText("Scanning marketplace directories..." if scanning else "")
+        self._status_label.setText(
+            "Scanning marketplace directories..." if scanning else ""
+        )
 
     def _render_items(self) -> None:
         self._clear_results()
@@ -278,7 +278,9 @@ class MarketplacePane(QWidget):
             if item.is_toolbox
             and (
                 item in matching_items
-                or any(child.parent_toolbox_id == item.item_id for child in grouped_items)
+                or any(
+                    child.parent_toolbox_id == item.item_id for child in grouped_items
+                )
             )
         ]
         standalone_items = [
@@ -289,7 +291,11 @@ class MarketplacePane(QWidget):
 
         for toolbox in toolbox_items:
             tools = sorted(
-                (item for item in grouped_items if item.parent_toolbox_id == toolbox.item_id),
+                (
+                    item
+                    for item in grouped_items
+                    if item.parent_toolbox_id == toolbox.item_id
+                ),
                 key=lambda item: (item.name.casefold(), item.item_id),
             )
             self._add_toolbox_card(toolbox, tools)
@@ -413,7 +419,9 @@ class MarketplacePane(QWidget):
     def _on_install_progress(self, _percentage: int, message: str) -> None:
         self._status_label.setText(message)
 
-    def _on_install_finished(self, success: bool, result: str, is_toolbox: bool) -> None:
+    def _on_install_finished(
+        self, success: bool, result: str, is_toolbox: bool
+    ) -> None:
         self._worker = None
         self._scan_button.setEnabled(True)
         self._status_label.setText(

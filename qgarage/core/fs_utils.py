@@ -12,6 +12,7 @@ def _clear_readonly_and_retry(func, path, excinfo) -> None:
     if not isinstance(exc_value, PermissionError):
         raise exc_value
 
+def _clear_readonly_and_retry(func, path, exc_info):
     os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
     parent = Path(path).parent
     if parent.exists():

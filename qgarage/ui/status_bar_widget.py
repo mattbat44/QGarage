@@ -36,6 +36,7 @@ class _ToolIndicator(QWidget):
         super().__init__(parent)
         self._tool_name = tool_name
         self._connected = False
+        self._checking = False
 
         self.setObjectName(f"qgarageToolIndicator_{tool_name}")
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -61,6 +62,12 @@ class _ToolIndicator(QWidget):
     def set_connected(self, connected: bool) -> None:
         """Update the visual state; does NOT trigger install logic."""
         self._connected = connected
+        if connected:
+            self._checking = False
+        self._apply_style()
+
+    def set_checking(self, checking: bool) -> None:
+        self._checking = checking
         self._apply_style()
 
     @property
@@ -72,13 +79,21 @@ class _ToolIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def _apply_style(self) -> None:
-        color = _COLOR_CONNECTED if self._connected else _COLOR_DISCONNECTED
+        if self._connected:
+            color = _COLOR_CONNECTED
+        elif self._checking:
+            color = _COLOR_CHECKING
+        else:
+            color = _COLOR_DISCONNECTED
 
         bolt_qss = f"color: {color}; font-size: 14px;"
         name_qss = f'color: #000000; font-size: 11px; font-family: "JetBrains Mono", monospace;'
 
         if self._connected:
             tip = f"{self._tool_name} is connected"
+            cursor = Qt.CursorShape.ArrowCursor
+        elif self._checking:
+            tip = f"Checking whether {self._tool_name} is available"
             cursor = Qt.CursorShape.ArrowCursor
         else:
             tip = (
@@ -97,7 +112,11 @@ class _ToolIndicator(QWidget):
     # ------------------------------------------------------------------
 
     def mousePressEvent(self, event) -> None:
-        if not self._connected and event.button() == Qt.MouseButton.LeftButton:
+        if (
+            not self._connected
+            and not self._checking
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
             self.install_requested.emit()
             event.accept()
             return
@@ -150,6 +169,10 @@ class StatusBarWidget(QWidget):
 
     def set_uv_connected(self, connected: bool) -> None:
         self._uv_indicator.set_connected(connected)
+
+    def set_tool_checking(self, tool_name: str, checking: bool) -> None:
+        indicator = self._uv_indicator if tool_name == "uv" else self._pixi_indicator
+        indicator.set_checking(checking)
 
     def set_pixi_connected(self, connected: bool) -> None:
         self._pixi_indicator.set_connected(connected)

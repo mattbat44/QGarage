@@ -52,7 +52,9 @@ class SettingsDialog(QDialog):
 
         self._install_missing_btn = QPushButton("Install Missing")
         self._install_missing_btn.setVisible(False)
-        self._install_missing_btn.clicked.connect(self._install_missing_package_managers)
+        self._install_missing_btn.clicked.connect(
+            self._install_missing_package_managers
+        )
         install_row.addWidget(self._install_missing_btn)
         layout.addLayout(install_row)
 
@@ -127,7 +129,9 @@ class SettingsDialog(QDialog):
         self._install_missing_btn.setEnabled(False)
         self._save_btn.setEnabled(False)
 
-        worker = PackageManagerInstallWorker(self._missing_package_managers, parent=self)
+        worker = PackageManagerInstallWorker(
+            self._missing_package_managers, parent=self
+        )
         worker.install_finished.connect(self._on_install_finished)
         worker.finished.connect(worker.deleteLater)
         self._install_worker = worker

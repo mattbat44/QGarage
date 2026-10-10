@@ -33,7 +33,9 @@ class PackageManagerInstallWorker(QThread):
                 f"Package manager install failed for {', '.join(self.package_managers)}: {output}",
                 "package_manager_install_worker",
             )
-            self.install_finished.emit(False, output or "Installer exited with an error")
+            self.install_finished.emit(
+                False, output or "Installer exited with an error"
+            )
             return
         except Exception as exc:
             log_error(

@@ -61,7 +61,9 @@ def test_apply_update_from_source_preserves_env_and_detects_manifest_changes(tmp
         json.dumps(installed_meta), encoding="utf-8"
     )
     (installed_dir / "main.py").write_text("print('old')\n", encoding="utf-8")
-    (installed_dir / "requirements.txt").write_text("requests==2.31.0\n", encoding="utf-8")
+    (installed_dir / "requirements.txt").write_text(
+        "requests==2.31.0\n", encoding="utf-8"
+    )
     (installed_dir / "stale.txt").write_text("remove me\n", encoding="utf-8")
     (installed_dir / ".venv").mkdir()
     (installed_dir / ".venv" / "keep.txt").write_text("keep\n", encoding="utf-8")
@@ -70,9 +72,12 @@ def test_apply_update_from_source_preserves_env_and_detects_manifest_changes(tmp
 
     assert result.requirements_changed is True
     assert result.pixi_changed is False
-    assert json.loads((installed_dir / "app_meta.json").read_text(encoding="utf-8"))[
-        "version"
-    ] == "2.0.0"
+    assert (
+        json.loads((installed_dir / "app_meta.json").read_text(encoding="utf-8"))[
+            "version"
+        ]
+        == "2.0.0"
+    )
     assert (installed_dir / "main.py").read_text(encoding="utf-8") == "print('new')\n"
     assert (installed_dir / "data.txt").exists()
     assert not (installed_dir / "stale.txt").exists()
@@ -81,8 +86,14 @@ def test_apply_update_from_source_preserves_env_and_detects_manifest_changes(tmp
 
 def test_should_check_for_updates_honors_recent_timestamp(monkeypatch):
     store = {}
-    monkeypatch.setattr("qgarage.core.app_update.get_setting", lambda key, default=None: store.get(key, default))
-    monkeypatch.setattr("qgarage.core.app_update.set_setting", lambda key, value: store.__setitem__(key, value))
+    monkeypatch.setattr(
+        "qgarage.core.app_update.get_setting",
+        lambda key, default=None: store.get(key, default),
+    )
+    monkeypatch.setattr(
+        "qgarage.core.app_update.set_setting",
+        lambda key, value: store.__setitem__(key, value),
+    )
 
     assert app_update.should_check_for_updates("demo_app") is True
 

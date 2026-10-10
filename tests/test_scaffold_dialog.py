@@ -48,6 +48,9 @@ class TestScaffoldApp:
         assert (dest_dir / "main.py").exists()
         assert (dest_dir / "pixi.toml").exists()
         assert not (dest_dir / "requirements.txt").exists()
+        assert 'python = ">=3.10,<3.15"' in (dest_dir / "pixi.toml").read_text(
+            encoding="utf-8"
+        )
 
     def test_rejects_unknown_backend(self, tmp_path):
         replacements = {
