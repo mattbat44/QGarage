@@ -1,5 +1,25 @@
 # QGarage Changelog
 
+## [3.0.0] - 2026-10-10
+
+### A new look
+- Redesigned the dashboard around rounded cards, round action buttons and soft shadows, using a single colour scheme of white, light grey, green and black
+- Bundled the Jersey 15 (titles, buttons) and JetBrains Mono (inputs, descriptions, small text) fonts so the plugin looks the same on every machine
+- Added a bottom bar with the QGarage logo, the plugin version and a search field
+- Restyled the install and new app dialogs and the marketplace to match, including a back button and a titled "folders to scan" panel
+- Toolbox cards now have an animated expand arrow, and searching automatically opens toolboxes that contain matching apps, then restores them when the search is cleared
+- Calmer page transitions, tighter spacing, and a layout that stays tidy in narrow docks
+- The toolbar is hidden while the marketplace is open
+
+### Added
+- Apps installed from inside a toolbox folder, from a download or from a local folder, now install into that toolbox instead of as standalone apps
+- On startup, standalone apps that were originally installed from a toolbox folder are moved back into their toolbox
+- A "checking" state for the uv and pixi indicators while availability is being verified, and clearer install prompts that name the app that needs the tool
+
+### Changed
+- Merged the backend setup and update-check improvements from the pixi/uv work, along with code style clean-ups
+- The old separate dark and light themes were replaced by one theme
+
 ## [2.2.7] - 2026-09-01
 
 ### Added

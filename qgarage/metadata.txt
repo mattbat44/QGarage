@@ -2,11 +2,11 @@
 name=QGarage
 qgisMinimumVersion=3.28
 qgisMaximumVersion=4.99
-description=Modular app-hosting framework for QGIS with per-app uv/pixi environments, Processing integration, and a unified dashboard for isolated mini-tools.
-version=2.9.9b
+description=A home for small Python tools. Install, run and manage self-contained apps and toolboxes from one friendly dashboard.
+version=3.0.0
 author=Matt Adams
 email=mattaadamsnz@gmail.com
-about=QGarage is a plugin-within-a-plugin framework for QGIS that installs, manages, and runs isolated mini-tools from a single dashboard. Version 2 adds dual uv/pixi backends for app environments, asynchronous environment preparation during installs, clearer setup error reporting, Processing Toolbox integration for declarative apps, richer scaffolding with backend selection and custom destinations, and bundled TestToolbox examples for both uv and pixi workflows. Install the plugin from the QGIS Plugin Manager, then configure uv and/or pixi in QGarage settings based on the apps you want to run.
+about=QGarage lets you install, run and manage small, self-contained Python tools (apps) and toolboxes from one dashboard. Skip excessive boilerplate and write apps for your business which reach users in QGIS and ArcGIS Pro, with easy updates, and avoid dependency hell - each app gets its own Python environment, built with uv or pixi. Learn how to make your apps or toolbox at the Github. Version 3 brings a visual upgrade. 
 tracker=https://github.com/mattbat44/QGarage/issues
 repository=https://github.com/mattbat44/QGarage/
 tags=tools,framework,dashboard,modular,apps,processing,uv,pixi
@@ -18,6 +18,7 @@ deprecated=False
 hasProcessingProvider=yes
 server=False
 changelog=
+	3.0.0: A new look for QGarage. Rounded app cards, round action buttons, a bottom bar with the logo, version and search, and restyled install, new app and marketplace screens, all in one colour scheme with the Jersey 15 and JetBrains Mono fonts. Searching opens matching toolboxes, toolbox arrows animate, and the layout holds up in narrow docks. Apps installed from inside a toolbox folder now stay with that toolbox, and the dashboard shows a checking state while uv and pixi are being verified.
 	2.6.1: Minor bug fixes and performance improvements
 	2.6.0: feat: Implement marketplace scanning and caching functionality
 		- Added Marketplace and MarketplaceCache classes for managing local app and toolbox discovery.
