@@ -12,8 +12,6 @@ QGarage is a lightweight framework for QGIS that lets you build and deploy self-
 - Gets an **auto-generated Qt UI** from declarative input definitions
 - Can be **installed independently** as a ZIP or folder
 - Appears in both the **QGarage dashboard** and **QGIS Processing Toolbox** (if declarative)
-- Has access to **GDAL, numpy, and other QGIS bundled libraries**
-
 ---
 
 ## Quick Start: Creating Your First App
@@ -139,10 +137,6 @@ pandas>=1.5
 geopandas
 ```
 
-**Do NOT list:**
-- `qgis`, `PyQt5`, `PyQt6` — provided by QGIS
-- `gdal`, `osgeo` — provided by QGIS/OSGeo4W
-- `numpy` — typically bundled with QGIS
 
 **Backend selection:** If your app has only `requirements.txt`, it uses the **uv backend** (QGIS's Python + your pip packages). If it has a `pixi.toml`, the **pixi backend** takes precedence.
 
@@ -165,7 +159,6 @@ gdal = ">=3.6"
 requests = ">=2.28"
 ```
 
-**Key difference:** With pixi, **QGIS's bundled packages are NOT available**. If you need numpy or GDAL, declare them in `[dependencies]`.
 
 ---
 
@@ -357,14 +350,7 @@ def execute_logic(self, inputs):
    QgsProject.instance().addMapLayer(layer)  # Intercepted and replayed
    ```
 
-7. **GDAL/osgeo ARE available** because QGIS's Python is used:
-   ```python
-   from osgeo import gdal
-
-   gdal.Warp(output_path, input_path, xRes=10, yRes=10)
-   ```
-
-8. **Do NOT use `QgsVectorFileWriter`** — it's a no-op stub. Use `osgeo.ogr` or `fiona` instead.
+7. **Do NOT use `QgsVectorFileWriter`** — it's a no-op stub. Use `osgeo.ogr` or `fiona` instead.
 
 ### `validate_inputs(self, inputs) -> Optional[str]` (Optional)
 
