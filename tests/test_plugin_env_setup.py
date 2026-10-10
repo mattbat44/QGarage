@@ -62,13 +62,16 @@ class DummyStatusBar:
     def set_pixi_connected(self, value):
         pass
 
+    def set_tool_checking(self, tool, checking):
+        pass
+
 
 class DummyDock:
     def __init__(self, iface):
         self.iface = iface
         self.install_requested = DummySignal()
         self.marketplace_app_installed = DummySignal()
-        self.backend_ready = DummySignal()
+        self.backend_checked = DummySignal()
         self.new_app_requested = DummySignal()
         self.refresh_app_requested = DummySignal()
         self.check_updates_requested = DummySignal()
@@ -322,7 +325,7 @@ def test_verifying_backend_clears_only_stale_backend_errors(monkeypatch, tmp_pat
 
     assert entry.health.state == AppState.DISCOVERED
     assert real_error_entry.health.state == AppState.ERROR
-    assert plugin.dock.backend_ready.emissions == [("uv",)]
+    assert plugin.dock.backend_checked.emissions == [("uv",)]
 
 
 def test_init_gui_triggers_update_checks(monkeypatch):

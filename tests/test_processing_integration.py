@@ -187,9 +187,7 @@ def test_declared_input_validation_enforces_vector_geometry_contract():
         app_dir=Path("/tmp/geometry_app"),
     )
 
-    error = app._validate_declared_inputs(
-        {"input_layer": FakeLayer()}, for_user=True
-    )
+    error = app._validate_declared_inputs({"input_layer": FakeLayer()}, for_user=True)
     assert error is not None
     assert "expected polygon" in error
 

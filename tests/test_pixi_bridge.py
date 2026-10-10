@@ -172,6 +172,23 @@ def test_sanitize_windows_path_for_pixi_drops_qgis_entries(monkeypatch):
 
 
 class TestEnsureEnv:
+    def test_skips_install_when_pixi_python_exists(self, pixi_bridge, tmp_path):
+        manifest = tmp_path / "pixi.toml"
+        manifest.write_text("[project]\nname = 'test'\n", encoding="utf-8")
+        env_dir = tmp_path / ".pixi" / "envs" / "default"
+        python_exe = (
+            env_dir / "python.exe"
+            if platform.system() == "Windows"
+            else env_dir / "bin" / "python"
+        )
+        python_exe.parent.mkdir(parents=True)
+        python_exe.write_text("", encoding="utf-8")
+
+        with patch("subprocess.run") as mock_run:
+            pixi_bridge.ensure_env(tmp_path)
+
+        mock_run.assert_not_called()
+
     def test_runs_pixi_install(self, pixi_bridge, tmp_path):
         manifest = tmp_path / "pixi.toml"
         manifest.write_text("[project]\nname = 'test'\n", encoding="utf-8")

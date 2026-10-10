@@ -247,7 +247,11 @@ class UvBridge:
         return resolved
 
     def ensure_env(self, app_dir: Path) -> None:
-        """Create or update a persistent app venv (idempotent)."""
+        """Create an app venv once, installing dependencies on first setup."""
+        venv_path = app_dir / VENV_DIR
+        if self._python_exe(venv_path).is_file():
+            log_info(f"Using existing app venv at {venv_path}", "uv_bridge")
+            return
         self.create_venv(app_dir)
         self.install_requirements(app_dir)
 
@@ -261,7 +265,7 @@ class UvBridge:
             log_info(f"Venv already exists at {venv_path}", "uv_bridge")
             return self._site_packages_path(venv_path)
 
-        cmd = [self.uv_exe, "venv", str(venv_path)]
+        cmd = [self.uv_exe, "venv", "--managed-python", str(venv_path)]
         try:
             result = subprocess.run(
                 cmd,

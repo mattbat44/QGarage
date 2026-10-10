@@ -13,7 +13,6 @@ Install commands used:
 """
 
 
-
 import logging
 import os
 import platform
@@ -33,7 +32,13 @@ def _resolve_windows_powershell() -> tuple[str, list[str]]:
     candidates = []
     for root in (os.environ.get("SystemRoot"), os.environ.get("WINDIR"), r"C:\Windows"):
         if root:
-            candidate = Path(root) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+            candidate = (
+                Path(root)
+                / "System32"
+                / "WindowsPowerShell"
+                / "v1.0"
+                / "powershell.exe"
+            )
             candidate_text = str(candidate)
             if candidate_text not in candidates:
                 candidates.append(candidate_text)

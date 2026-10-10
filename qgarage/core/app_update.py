@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import logging
 import json
+import logging
+import re
 import shutil
 import tempfile
 import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-import re
 from typing import BinaryIO, Optional
 from urllib.error import URLError
 from urllib.parse import urljoin, urlparse
@@ -20,7 +20,6 @@ from urllib.request import (
     build_opener,
 )
 
-from .fs_utils import remove_tree
 from .constants import (
     APP_META_FILENAME,
     DEFAULT_ENCODING,
@@ -29,6 +28,7 @@ from .constants import (
     REQUIREMENTS_FILENAME,
     VENV_DIR,
 )
+from .fs_utils import remove_tree
 from .settings import get_setting, set_setting
 
 INSTALL_SOURCE_KEY = "qgarage_install_source"
@@ -266,11 +266,13 @@ def _resolve_remote_snapshot(
     extract_dir = temp_dir / "extracted"
 
     try:
-        with _open_remote_zip(
-            source.locator, timeout=REMOTE_ZIP_TIMEOUT_SECONDS
-        ) as response:
-            with open(zip_path, "wb") as f:
-                shutil.copyfileobj(response, f)
+        with (
+            _open_remote_zip(
+                source.locator, timeout=REMOTE_ZIP_TIMEOUT_SECONDS
+            ) as response,
+            open(zip_path, "wb") as f,
+        ):
+            shutil.copyfileobj(response, f)
 
         if not zipfile.is_zipfile(zip_path):
             shutil.rmtree(temp_dir, ignore_errors=True)

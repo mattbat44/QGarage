@@ -42,7 +42,7 @@ class DashboardDock(QgsDockWidget):
 
     install_requested = pyqtSignal()
     marketplace_app_installed = pyqtSignal(str, bool)
-    backend_ready = pyqtSignal(str)
+    backend_checked = pyqtSignal(str)
     new_app_requested = pyqtSignal()
     settings_requested = pyqtSignal()
     #: Emitted when the user right-clicks an app card and chooses "Refresh App".
@@ -65,12 +65,12 @@ class DashboardDock(QgsDockWidget):
         self._current_app_id: Optional[str] = None  # Track currently running app
         self._page_transition: Optional[QPropertyAnimation] = None
         self._cards_transition: Optional[QPropertyAnimation] = None
-        self._ready_backends: set[str] = set()
+        self._checked_backends: set[str] = set()
         self._app_search_timer = QTimer(self)
         self._app_search_timer.setInterval(250)
         self._app_search_timer.setSingleShot(True)
         self._app_search_timer.timeout.connect(self._apply_pending_card_filter)
-        self.backend_ready.connect(self._on_backend_ready)
+        self.backend_checked.connect(self._on_backend_checked)
 
         self._build_ui()
         ThemeManager.apply_to_widget(self)
@@ -396,9 +396,9 @@ class DashboardDock(QgsDockWidget):
             set(self._registry.entries), set(self._registry.toolbox_entries)
         )
 
-    def _on_backend_ready(self, tool: str) -> None:
-        """Clear neutral Checking badges for apps whose backend is verified."""
-        self._ready_backends.add(tool)
+    def _on_backend_checked(self, tool: str) -> None:
+        """Clear neutral Checking badges after backend availability is resolved."""
+        self._checked_backends.add(tool)
         self._sync_backend_check_indicators()
 
     def _sync_backend_check_indicators(self) -> None:
@@ -406,7 +406,7 @@ class DashboardDock(QgsDockWidget):
             return
         for app_id, entry in self._registry.entries.items():
             backend = "pixi" if (entry.app_dir / PIXI_TOML_FILENAME).exists() else "uv"
-            if backend not in self._ready_backends:
+            if backend not in self._checked_backends:
                 continue
             card = self._cards.get(app_id)
             if card is not None:
@@ -504,11 +504,20 @@ class DashboardDock(QgsDockWidget):
         """Open an app whose environment and instance are ready."""
         self._show_app(app_id)
 
-    def prompt_tool_install(self, tool: str, command: str) -> None:
+    def prompt_tool_install(
+        self, tool: str, command: str, *, app_name: Optional[str] = None
+    ) -> None:
         """Show a visible, dashboard-owned consent prompt for a backend."""
+        self.show()
+        self._show_cards()
         self._pending_tool_install = tool
         self._tool_install_messages = []
-        self._tool_install_title.setText(f"{tool} is required to open this app")
+        title = (
+            f"{tool} is required to open {app_name}"
+            if app_name
+            else f"{tool} is required by an installed app"
+        )
+        self._tool_install_title.setText(title)
         self._tool_install_detail.setText(
             "QGarage will run this official installer command:\n\n" + command
         )
@@ -583,7 +592,8 @@ class DashboardDock(QgsDockWidget):
         for app_id, card in self._cards.items():
             entry = self._registry.entries.get(app_id)
             card.setVisible(
-                entry is not None and self._entry_matches(entry.app_meta, normalized_query)
+                entry is not None
+                and self._entry_matches(entry.app_meta, normalized_query)
             )
         for toolbox_id, toolbox_card in self._toolbox_cards.items():
             toolbox_entry = self._registry.toolbox_entries.get(toolbox_id)
