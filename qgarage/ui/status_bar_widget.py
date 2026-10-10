@@ -21,6 +21,7 @@ logger = logging.getLogger("qgarage.status_bar")
 # Green = connected, black = not yet verified
 _COLOR_CONNECTED = "#8DAD25"
 _COLOR_DISCONNECTED = "#000000"
+_COLOR_CHECKING = "#8a8a8a"
 
 
 class _ToolIndicator(QWidget):
