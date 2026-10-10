@@ -171,6 +171,8 @@ class ToolboxCardWidget(QFrame):
             lambda value: self._expand_button.set_icon_rotation(float(value))
         )
 
+        #sort self.toolbox_entry.app_entries by app_id alphabetically
+        self.toolbox_entry.app_entries = dict(sorted(self.toolbox_entry.app_entries.items()))
         # Add app cards
         for app_id, app_entry in self.toolbox_entry.app_entries.items():
             is_installed = app_id in self._installed_app_ids

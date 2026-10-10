@@ -78,11 +78,14 @@ class AppRegistry:
     @property
     def entries(self) -> MappingProxyType[str, AppEntry]:
         """Return read-only view of entries (no copy)."""
+
+        self._entries = dict(sorted(self._entries.items()))
         return MappingProxyType(self._entries)
 
     @property
     def toolbox_entries(self) -> MappingProxyType[str, ToolboxEntry]:
         """Return read-only view of toolbox entries."""
+        self._toolbox_entries = dict(sorted(self._toolbox_entries.items()))
         return MappingProxyType(self._toolbox_entries)
 
     def discover(self) -> list[AppEntry]:
@@ -237,7 +240,8 @@ class AppRegistry:
 
     def iter_entries(self) -> list[AppEntry]:
         """Return a stable list of all registered app entries."""
-        return list(self._entries.values())
+        # Sort entries by app_id alphabetically
+        return list(sorted(self._entries.values(), key=lambda e: e.app_id))
 
     def load_app(self, app_id: str) -> Optional[BaseApp]:
         """Load a specific app by ID (lazy)."""
