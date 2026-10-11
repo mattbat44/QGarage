@@ -22,6 +22,7 @@ from .core.app_update import (
 from .core.constants import PIXI_TOML_FILENAME
 from .core.logger import log_error, log_info
 from .core.settings import get_pixi_executable, get_uv_executable
+from .core.toolbox_membership import reconcile_installed_apps
 from .core.uv_bridge import UvBridge
 from .processing.processing_provider import QGarageProcessingProvider
 from .ui.dashboard_dock import DashboardDock
@@ -96,6 +97,14 @@ class QGaragePlugin:
         self.action.triggered.connect(self._toggle_dock)
         self.iface.addToolBarIcon(self.action)
         self.iface.addPluginToMenu("&QGarage", self.action)
+
+        # Reattach standalone apps that were originally installed from inside
+        # a toolbox folder (e.g. installed individually before the toolbox
+        # itself was installed, or from an older QGarage version).
+        for app_id, toolbox_id in reconcile_installed_apps(apps_dir):
+            log_info(
+                f"Reattached app '{app_id}' to toolbox '{toolbox_id}'", "plugin"
+            )
 
         # Discover apps without requiring either optional environment backend.
         self.registry = AppRegistry(apps_dir)
