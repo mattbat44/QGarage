@@ -348,6 +348,14 @@ class MarketplacePane(QWidget):
             if widget is not None:
                 widget.deleteLater()
 
+    def _add_group_label(self, text: str) -> None:
+        label = QLabel(text)
+        label.setObjectName("marketplaceGroupLabel")
+        font = label.font()
+        font.setBold(True)
+        label.setFont(font)
+        self._results_layout.insertWidget(self._results_layout.count() - 1, label)
+
     def _add_card(self, item: MarketplaceItem) -> None:
         metadata = dict(item.metadata)
         description = str(metadata.get("description", ""))
