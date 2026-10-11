@@ -12,6 +12,8 @@ from .subprocess_runner import (
     build_isolated_run_config,
     serialize_inputs,
 )
+from .constants import PIXI_TOML_FILENAME, REQUIREMENTS_FILENAME
+from .env_bridge import resolve_env_dir_for_app
 
 if TYPE_CHECKING:
     import subprocess
@@ -65,8 +67,10 @@ def start_isolated_app_run(
     import qgarage
 
     plugin_dir = Path(qgarage.__file__).parent
-    requirements_path = app.app_dir / "requirements.txt"
-    venv_site_packages = active_bridge.get_site_packages(app.app_dir)
+    env_dir = resolve_env_dir_for_app(app.app_dir)
+    requirements_path = env_dir / REQUIREMENTS_FILENAME
+    manifest_path = env_dir / PIXI_TOML_FILENAME
+    venv_site_packages = active_bridge.get_site_packages(env_dir)
 
     config = build_isolated_run_config(
         app_dir=app.app_dir,
@@ -86,6 +90,7 @@ def start_isolated_app_run(
         requirements_path=requirements_path if requirements_path.exists() else None,
         venv_site_packages=venv_site_packages,
         show_window=show_console,
+        manifest_path=manifest_path if manifest_path.exists() else None,
     )
 
     return IsolatedAppRun(

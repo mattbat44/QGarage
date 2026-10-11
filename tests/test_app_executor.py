@@ -125,3 +125,57 @@ def test_run_app_isolated_times_out_without_output(monkeypatch, tmp_path):
     assert "timed out" in result["message"]
     assert result["traceback"] == "runner stuck"
     assert fake_process.terminate_called is True
+
+
+def test_start_isolated_app_run_uses_toolbox_shared_env(monkeypatch, tmp_path):
+    toolbox_dir = tmp_path / "shared_toolbox"
+    toolbox_dir.mkdir()
+    (toolbox_dir / "toolbox_meta.json").write_text(
+        '{"id":"shared_toolbox","name":"Shared Toolbox"}', encoding="utf-8"
+    )
+    (toolbox_dir / "requirements.txt").write_text("requests\n", encoding="utf-8")
+
+    app_dir = toolbox_dir / "child_app"
+    app_dir.mkdir()
+
+    class DummyBridge:
+        def __init__(self):
+            self.site_packages_dir = None
+            self.kwargs = None
+
+        def get_site_packages(self, app_dir):
+            self.site_packages_dir = app_dir
+            return None
+
+        def launch_app_isolated(self, **kwargs):
+            self.kwargs = kwargs
+            return FakeProcess()
+
+    bridge = DummyBridge()
+    dummy_app = cast(
+        Any,
+        type(
+            "DummyApp",
+            (),
+            {
+                "app_dir": app_dir,
+                "app_meta": {"entry_point": "main.py", "class_name": "App"},
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        "qgarage.core.app_executor.serialize_inputs", lambda inputs, tmp: inputs
+    )
+
+    run = start_isolated_app_run(
+        app=dummy_app,
+        uv_bridge=cast(Any, object()),
+        inputs={},
+        show_console=False,
+        bridge=cast(Any, bridge),
+    )
+
+    assert bridge.site_packages_dir == toolbox_dir
+    assert bridge.kwargs["requirements_path"] == toolbox_dir / "requirements.txt"
+    assert bridge.kwargs["manifest_path"] is None
+    run.tmp_dir.cleanup()

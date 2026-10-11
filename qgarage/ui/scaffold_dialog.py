@@ -20,6 +20,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.constants import PIXI_TOML_FILENAME, REQUIREMENTS_FILENAME
+from .pill_frame import build_dialog_shell
 
 logger = logging.getLogger("qgarage.scaffold_dialog")
 
@@ -82,7 +83,7 @@ class ScaffoldDialog(QDialog):
         self._build_ui()
 
     def _build_ui(self):
-        layout = QVBoxLayout(self)
+        layout = build_dialog_shell(self, "new app")
         layout.setSpacing(10)
 
         form = QFormLayout()

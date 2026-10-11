@@ -194,6 +194,7 @@ def _install_qgis_mock():
         "qgis.PyQt",
         "qgis.PyQt.QtCore",
         "qgis.PyQt.QtGui",
+        "qgis.PyQt.QtSvg",
         "qgis.PyQt.QtWidgets",
     ]
 

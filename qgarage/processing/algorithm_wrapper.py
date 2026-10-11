@@ -64,9 +64,9 @@ class BaseAppAlgorithm(QgsProcessingAlgorithm):
     def _get_bridge(self) -> EnvBridge:
         """Return the appropriate environment bridge for this app."""
         if self._bridge is None:
-            from ..core.constants import PIXI_TOML_FILENAME
+            from ..core.env_bridge import resolve_backend_for_app
 
-            if (self.app_dir / PIXI_TOML_FILENAME).exists():
+            if resolve_backend_for_app(self.app_dir) == "pixi":
                 from ..core.pixi_bridge import PixiBridge
 
                 self._bridge = PixiBridge(get_pixi_executable())

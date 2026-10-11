@@ -28,7 +28,8 @@ from typing import Any
 
 from qgis.PyQt.QtCore import QThread, pyqtSignal
 
-from .constants import PIXI_TOML_FILENAME
+from .constants import PIXI_TOML_FILENAME, REQUIREMENTS_FILENAME
+from .env_bridge import resolve_backend_for_app, resolve_env_dir_for_app
 
 _APP_STATE_EXCLUDED_ATTRS = {
     "_bridge",
@@ -176,7 +177,7 @@ def build_isolated_run_config(
         "import_paths": [str(app_dir), str(plugin_dir.parent)],
     }
 
-    if app_instance is not None and (app_dir / PIXI_TOML_FILENAME).exists():
+    if app_instance is not None and resolve_backend_for_app(app_dir) == "pixi":
         config["skip_subclass_init"] = True
         config["app_state"] = build_app_state_snapshot(app_instance)
 
@@ -728,8 +729,10 @@ def launch_isolated_app_run(
     runner_path.write_text(RUNNER_SCRIPT, encoding="utf-8")
 
     plugin_dir = Path(qgarage.__file__).parent
-    requirements_path = app_dir / "requirements.txt"
-    venv_site_packages = active_bridge.get_site_packages(app_dir)
+    env_dir = resolve_env_dir_for_app(app_dir)
+    requirements_path = env_dir / REQUIREMENTS_FILENAME
+    manifest_path = env_dir / PIXI_TOML_FILENAME
+    venv_site_packages = active_bridge.get_site_packages(env_dir)
     config = build_isolated_run_config(
         app_dir=app_dir,
         app_meta=app_meta,
@@ -748,6 +751,7 @@ def launch_isolated_app_run(
         requirements_path=requirements_path if requirements_path.exists() else None,
         venv_site_packages=venv_site_packages,
         show_window=keep_open,
+        manifest_path=manifest_path if manifest_path.exists() else None,
     )
 
     return {

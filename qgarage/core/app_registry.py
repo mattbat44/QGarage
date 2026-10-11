@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 from .app_loader import AppLoader
 from .app_state import AppHealth
 from .constants import APP_META_FILENAME, DEFAULT_ENCODING, TOOLBOX_META_FILENAME
-from .env_bridge import EnvBridge, resolve_bridge_for_app
+from .env_bridge import EnvBridge, resolve_bridge_for_app, resolve_env_dir_for_app
 from .logger import log_error, log_info, log_warning
 from .uv_bridge import UvBridge
 
@@ -75,14 +75,21 @@ class AppRegistry:
         """Return the appropriate environment bridge for an app directory."""
         return resolve_bridge_for_app(app_dir, self.pixi_bridge, self.uv_bridge)
 
+    def get_env_dir_for_app(self, app_dir: Path) -> Path:
+        """Return the directory that owns the effective environment for an app."""
+        return resolve_env_dir_for_app(app_dir)
+
     @property
     def entries(self) -> MappingProxyType[str, AppEntry]:
         """Return read-only view of entries (no copy)."""
+
+        self._entries = dict(sorted(self._entries.items()))
         return MappingProxyType(self._entries)
 
     @property
     def toolbox_entries(self) -> MappingProxyType[str, ToolboxEntry]:
         """Return read-only view of toolbox entries."""
+        self._toolbox_entries = dict(sorted(self._toolbox_entries.items()))
         return MappingProxyType(self._toolbox_entries)
 
     def discover(self) -> list[AppEntry]:
@@ -237,7 +244,8 @@ class AppRegistry:
 
     def iter_entries(self) -> list[AppEntry]:
         """Return a stable list of all registered app entries."""
-        return list(self._entries.values())
+        # Sort entries by app_id alphabetically
+        return list(sorted(self._entries.values(), key=lambda e: e.app_id))
 
     def load_app(self, app_id: str) -> Optional[BaseApp]:
         """Load a specific app by ID (lazy)."""

@@ -10,6 +10,7 @@ from qgis.PyQt.QtWidgets import (
 )
 
 from ..core.base_app import BaseApp
+from ..themes import assets
 
 
 class AppHostWidget(QWidget):
@@ -35,7 +36,8 @@ class AppHostWidget(QWidget):
         top_layout = QHBoxLayout(top_bar)
         top_layout.setContentsMargins(8, 8, 8, 4)
 
-        back_btn = QPushButton("< Back")
+        back_btn = QPushButton("Back")
+        back_btn.setIcon(assets.icon("arrow_back", 20))
         back_btn.setObjectName("qgarageBackButton")
         back_btn.clicked.connect(self.back_requested.emit)
         top_layout.addWidget(back_btn)
@@ -45,6 +47,7 @@ class AppHostWidget(QWidget):
 
         # Scroll area for app content
         self._scroll = QScrollArea()
+        self._scroll.setObjectName("appHostScroll")
         self._scroll.setWidgetResizable(True)
         self._scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._layout.addWidget(self._scroll, stretch=1)
